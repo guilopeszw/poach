@@ -68,7 +68,9 @@ function summarizePointerActions(value: unknown) {
     const width = parsed.data.boundsWidth ?? 1;
     const height = parsed.data.boundsHeight ?? 1;
     const distance = Math.hypot((end.x - action.start.x) * width, (end.y - action.start.y) * height);
-    const kind = action.moved && (distance >= 6 || action.movedOutsideCapture) ? "drag" : "click";
+    const kind = (action.moved && (distance >= 6 || action.movedOutsideCapture)) || event.withinCapture === false
+      ? "drag"
+      : "click";
     actions.push({
       kind,
       button,

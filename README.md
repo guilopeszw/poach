@@ -3,7 +3,7 @@
 <p align="center">A lightweight Mac app for the UI you wish you’d made.</p>
 <p align="center"><strong><a href="https://github.com/guilopeszw/poach/releases/download/v0.1.0-beta.4/Poach-arm64.zip">Download for Apple silicon</a></strong> · <a href="docs/media/poach-demo.mp4">Watch the demo</a> · <a href="docs/media/MUSIC-CREDITS.md">Music credits</a></p>
 
-<p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach's interaction brief with a recorded recommendation card, a timestamped comment, a detected click, its palette, and build instructions."></a></p>
+<p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach's interaction brief with a recorded recommendation card, a timestamped comment, a sample-derived click candidate, its palette, and build instructions."></a></p>
 
 ## What does Poach do?
 
@@ -48,7 +48,7 @@ Keep Poach in Applications so the connector can find it. If the handoff button i
 <details>
 <summary>What does my assistant receive?</summary>
 
-Poach analyzes the media on your Mac. During an explicit native screen recording, it samples pointer position and mouse-button state at a nominal 120 Hz; the trace is capped at 5,000 events and reports how many samples fell inside the capture bounds and observed a held button. It does not capture keyboard input or scroll events. Samples outside the captured bounds are marked and clamped to the edge, so off-capture coordinates are not shared. The trace stays local until you explicitly share a handoff. When your assistant reads it, it receives your instructions, timestamped notes, pointer trace, derived click/drag summaries when button events were sampled, palette, and requested frames. If no button events were observed, the copied handoff tells the assistant not to assume clicks or drags. Match action coordinates to frames to identify targets; the trace alone cannot establish what an interaction did. Motion timing and easing are estimates from sampled frames. A new handoff replaces the previous one, and each handoff expires after 24 hours.
+Poach analyzes the media on your Mac. During an explicit native screen recording, it samples pointer position and mouse-button state at a nominal 120 Hz; the trace is capped at 5,000 events and reports how many samples fell inside the capture bounds and observed a held button. It does not capture keyboard input or scroll events. Samples outside the captured bounds are flagged and clamped to the capture edge, so raw screen coordinates outside the selected area are not shared. The trace stays local until you explicitly share a handoff. When your assistant reads it, it receives your instructions, timestamped notes, pointer trace, derived click/drag candidates when button events were sampled, palette, and requested frames. If no button events were observed, the copied handoff tells the assistant not to assume clicks or drags. Match action coordinates to frames to identify targets; the trace alone cannot establish what an interaction did. Motion timing and easing are estimates from sampled frames. A new handoff replaces the previous one, and each handoff expires after 24 hours.
 
 </details>
 
