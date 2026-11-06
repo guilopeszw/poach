@@ -120,7 +120,7 @@ jobs:
             send({method:'notifications/initialized'});
             const listed = await request(2,'tools/list',{});
             const toolNames = listed.tools.map(tool => tool.name);
-            for (const name of ['poach_inspect','poach_read_brief','poach_read_moment']) assert.ok(toolNames.includes(name), `Missing ${name}`);
+            for (const name of ['poach_inspect','poach_inspect_image','poach_read_brief','poach_read_moment']) assert.ok(toolNames.includes(name), `Missing ${name}`);
 
             const inspected = await request(3,'tools/call',{name:'poach_inspect',arguments:{videoPath:process.argv[3]}});
             assert.ok(!inspected.isError, JSON.stringify(inspected.content));
