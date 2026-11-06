@@ -84,6 +84,23 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   const unavailableText = unavailableMoment.content.find(item => item.type === "text").text;
   assert.match(unavailableText, /No native pointer trace was included/);
   assert.doesNotMatch(unavailableText, /Pointer trace summary:/);
+  const truncatedTrace = {
+    ...brief,
+    evidence: {
+      ...brief.evidence,
+      pointerTrace: {
+        ...brief.evidence.pointerTrace,
+        truncated: true,
+        events: [{ timeMs: 990, kind: "down", x: 0.5, y: 0.5, button: "left", withinCapture: true }],
+      },
+    },
+  };
+  await writeFile(path, JSON.stringify(truncatedTrace));
+  const truncatedMoment = await client.callTool({ name: "poach_read_moment", arguments: { timeMs: 1000 } });
+  assert.ok(!truncatedMoment.isError);
+  const truncatedText = truncatedMoment.content.find(item => item.type === "text").text;
+  assert.match(truncatedText, /Trace reached its event limit; later actions may be incomplete/);
+  assert.match(truncatedText, /Incomplete button-down without a matching release/);
   await writeFile(path, JSON.stringify({ ...brief, sharedAt: brief.sharedAt - 86401 }));
   const expired = await client.callTool({ name: "poach_read_brief", arguments: {} });
   assert.equal(expired.isError, true);
