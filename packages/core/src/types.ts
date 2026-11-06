@@ -15,6 +15,45 @@ export interface MotionTiming {
   readonly token: string;
 }
 
+/** A pointer action sampled from the active local screen recording. */
+export interface PointerTraceEvent {
+  readonly timeMs: number;
+  readonly kind: "move" | "down" | "up" | "drag";
+  /** Normalized coordinate within the captured bounds (0–1). */
+  readonly x: number;
+  /** Normalized coordinate within the captured bounds (0–1), top-left origin. */
+  readonly y: number;
+  /** False when the pointer sample is outside the capture bounds; normalized coordinates are clamped to the edge. */
+  readonly withinCapture: boolean;
+  readonly button?: "left" | "right" | "other";
+}
+
+/** Pointer-only interaction evidence, kept with the explicitly shared brief. */
+export interface PointerTrace {
+  readonly available: boolean;
+  readonly coordinateSpace: "normalized-capture-bounds";
+  readonly origin: "top-left";
+  readonly boundsWidth: number;
+  readonly boundsHeight: number;
+  readonly sampleIntervalMs: number;
+  /** Total pointer polls completed while the recording was active. */
+  readonly sampleCount?: number;
+  /** Polls where the pointer was inside the recorded bounds. */
+  readonly insideSampleCount?: number;
+  /** Polls where at least one mouse button was down. */
+  readonly buttonSampleCount?: number;
+  /** Scroll is not sampled by the capture-scoped pointer poller. */
+  readonly scrollCaptured: false;
+  readonly truncated: boolean;
+  readonly events: readonly PointerTraceEvent[];
+}
+
+/** A user-authored label anchored to a time in the captured video. */
+export interface InteractionAnnotation {
+  readonly timeMs: number;
+  readonly text: string;
+}
+
 export interface InspectionResult {
   readonly mediaType: "video" | "image";
   readonly sourcePath: string;
@@ -22,6 +61,10 @@ export interface InspectionResult {
   readonly keyframes: readonly Keyframe[];
   readonly palette: readonly string[];
   readonly timing: MotionTiming;
+  /** Present for Poach's native screen recordings; imported media has no trace. */
+  readonly pointerTrace?: PointerTrace;
+  /** Labels attached to timestamps in Poach's review editor. */
+  readonly annotations?: readonly InteractionAnnotation[];
 }
 
 export interface ExtractOptions {
