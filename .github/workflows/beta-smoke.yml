@@ -18,7 +18,20 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          required_assets=(Poach-arm64.zip Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh)
+          for asset in "${required_assets[@]}"; do
+            if [ ! -f "$asset" ]; then
+              echo "Release $RELEASE_TAG is missing $asset" >&2
+              exit 1
+            fi
+          done
           if [ -f SHA256SUMS.txt ]; then
+            expected_assets="$(printf '%s\n' "${required_assets[@]}" | LC_ALL=C sort)"
+            manifest_assets="$(awk 'NF >= 2 {name = $2; sub(/^\*/, "", name); print name}' SHA256SUMS.txt | LC_ALL=C sort)"
+            if [ "$manifest_assets" != "$expected_assets" ]; then
+              echo "SHA256SUMS.txt must list exactly the five required release assets" >&2
+              exit 1
+            fi
             shasum -a 256 -c SHA256SUMS.txt
           elif [[ ! "$RELEASE_TAG" =~ ^v0\.1\.0-beta\.[1-4]$ ]]; then
             echo "Release $RELEASE_TAG must include SHA256SUMS.txt" >&2
