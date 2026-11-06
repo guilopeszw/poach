@@ -1,7 +1,9 @@
 import SwiftUI
 import AppKit
+import CoreGraphics
 import UniformTypeIdentifiers
 import OSLog
+import ScreenCaptureKit
 
 @main
 struct PoachApp: App {
@@ -129,6 +131,7 @@ struct PoachApp: App {
 
                 NSApp.unhide(nil)
                 NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
+                service.showRecordingAreaShadow()
                 isWorking = false
                 isRecording = true
                 Self.captureLog.notice("Recording started")
@@ -170,16 +173,18 @@ struct PoachApp: App {
         isWorking = true
         recordingWindow.showFinishing()
         do {
-            let videoURL = try await service.stopRecording()
+            let recording = try await service.stopRecording()
+            let videoURL = recording.url
             Self.captureLog.notice("Recording file finalized")
             captureServiceStorage = nil
             NSApp.unhide(nil)
             NSApp.activate(ignoringOtherApps: true)
             hudWindow.showPreparing()
             recordingWindow.close()
-            let result = try await PoachInspectionRunner.inspect(videoURL: videoURL, isRecording: true) { stage in
+            var result = try await PoachInspectionRunner.inspect(videoURL: videoURL, isRecording: true) { stage in
                 hudWindow.preparation.steps.append(stage)
             }
+            result.pointerTrace = recording.pointerTrace
             Self.captureLog.notice("Recording analysis completed")
             hudWindow.show(result, status: hudWindow.preparation, original: videoURL)
             Self.captureLog.notice("Review editor presented")
@@ -209,20 +214,29 @@ struct PoachApp: App {
         if let captureError = error as? ScreenCaptureError, case .permissionDenied = captureError {
             isPermissionDenied = true
         } else {
-            isPermissionDenied = nsError.domain == "SCStreamErrorDomain" && nsError.code == -3801
+            isPermissionDenied = nsError.domain == SCStreamError.errorDomain
+                && nsError.code == SCStreamError.Code.userDeclined.rawValue
         }
         guard isPermissionDenied else {
             showError(title: "Poach couldn't start recording", error: error)
             return
         }
 
+        let permissionPreflightPassed = CGPreflightScreenCaptureAccess()
+        Self.captureLog.error(
+            "Screen capture denied; permission preflight \(permissionPreflightPassed ? "passed" : "failed", privacy: .public), domain \(nsError.domain, privacy: .public), code \(nsError.code, privacy: .public)"
+        )
         let alert = NSAlert()
-        alert.messageText = "Allow screen recording for Poach"
-        alert.informativeText = "macOS denied screen capture. Open Privacy & Security → Screen & System Audio Recording and enable Poach, then quit and reopen it. If Poach is already enabled, remove its entry and add this copy of Poach again. A rebuilt development app may need a fresh approval."
-        alert.alertStyle = .informational
+        alert.messageText = permissionPreflightPassed
+            ? "Poach couldn't start this capture"
+            : "Poach couldn't access the screen"
+        alert.informativeText = permissionPreflightPassed
+            ? "macOS reports Screen Recording access for Poach, but ScreenCaptureKit refused this request. Quit and reopen Poach, then try again. If the problem continues, this signed copy may not match the app identity macOS approved."
+            : "macOS refused the ScreenCaptureKit request. Quit and reopen Poach first, then try again. If capture still fails, check that this exact copy of Poach is enabled in Screen & System Audio Recording. Rebuilt or differently signed copies can appear as separate apps."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Not now")
-        if alert.runModal() == .alertFirstButtonReturn,
+        if alert.runModal() == .alertSecondButtonReturn,
            let settingsURL = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(settingsURL)
         }
@@ -485,7 +499,8 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
             isVideo: result.mediaType != "image",
             status: status,
             palette: palette,
-            onShareContext: { try Self.shareContext(result, context: $0) },
+            pointerTrace: result.pointerTrace,
+            onShareContext: { try Self.shareContext(result, context: $0, annotations: $1) },
             onClose: { [weak self] in
                 self?.panel?.performClose(nil)
             }
@@ -532,12 +547,14 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         return panel
     }
 
-    private static func shareContext(_ result: PoachInspection, context: String) throws -> String {
+    private static func shareContext(_ result: PoachInspection, context: String,
+                                    annotations: [InteractionAnnotation]) throws -> String {
         let directory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Caches/Poach", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
-        let evidence = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result))
+        var evidence = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result)) as? [String: Any] ?? [:]
+        evidence["annotations"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(annotations))
         let identifier = UUID().uuidString
         let brief: [String: Any] = [
             "briefId": identifier,

@@ -20,7 +20,8 @@ struct FloatingHUDView: View {
     @State private var playback = CommentPlayback()
     let status: InspectionStatus
     let palette: [HUDPaletteToken]
-    var onShareContext: (String) throws -> String
+    let pointerTrace: PointerTrace?
+    var onShareContext: (String, [InteractionAnnotation]) throws -> String
     @State private var connected = false
     @State private var showingAssistantSetup = false
     @State private var shareStatus = ""
@@ -35,7 +36,8 @@ struct FloatingHUDView: View {
 
             if isVideo {
                 CaptureVideoPlayer(player: player)
-                    .frame(height: 220)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 CommentTimeline(playback: playback, comments: $comments, isOpen: $commentsOpen)
             } else if let image = NSImage(contentsOf: sourceURL) {
@@ -86,8 +88,11 @@ struct FloatingHUDView: View {
                 connected = Self.hasLiveConnector()
                 guard connected else { return }
                 do {
-                    let id = try onShareContext(implementationContext)
-                    let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images and notes. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
+                    let annotations = comments.map {
+                        InteractionAnnotation(timeMs: Int(($0.time * 1_000).rounded()), text: $0.text)
+                    }
+                    let id = try onShareContext(implementationContext, annotations)
+                    let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets; use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
                     NSPasteboard.general.clearContents()
                     let copied = NSPasteboard.general.setString(message, forType: .string)
                     shareStatus = copied ? "Handoff copied." : "Clipboard unavailable. Click Copy handoff to try again."
@@ -216,6 +221,22 @@ struct FloatingHUDView: View {
             return "Replace \(token.hex) with \(hex(replacement))."
         }
         return ([context] + comments.map { String(format: "[%.2fs] %@", $0.time, $0.text) } + replacements).filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    private var pointerEvidenceGuidance: String {
+        guard let pointerTrace, pointerTrace.available else {
+            return "This media has no native pointer trace; do not assume clicks or drags that are not visible in the video or described in notes."
+        }
+        let hasButtonTransitions = pointerTrace.events.contains { event in
+            event.kind == .down || event.kind == .up || event.kind == .drag
+        }
+        if hasButtonTransitions {
+            return "The native pointer trace contains sampled button transitions and may provide click/drag summaries. Sampling can miss brief actions; correlate trace events with frames and notes, and do not infer an interaction's effect from the trace alone."
+        }
+        if pointerTrace.sampleCount > 0 {
+            return "The native pointer sampler collected \(pointerTrace.sampleCount) samples, including \(pointerTrace.insideSampleCount) inside the capture bounds, but observed no button-down, button-up, or drag events. Do not claim clicks or drags; rely on visible video and notes, and ask if behavior is unclear."
+        }
+        return "A native pointer trace was started but collected no samples. Do not claim clicks or drags; rely on visible video and notes, and ask if behavior is unclear."
     }
 
     private func hex(_ color: Color) -> String {

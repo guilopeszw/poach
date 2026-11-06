@@ -42,7 +42,7 @@ enum ScreenCaptureError: LocalizedError {
         case .requiresNewerMacOS:
             "Screen recording requires macOS 15 or later. You can still load an existing video or image."
         case .permissionDenied:
-            "Poach needs Screen & System Audio Recording access. Enable Poach in System Settings > Privacy & Security, then quit and reopen the app."
+            "macOS refused this screen capture request. Quit and reopen Poach first. If it still fails, check that this copy is enabled in Screen & System Audio Recording; macOS can treat rebuilt or differently signed copies as separate apps."
         case .selectionCancelled:
             "Capture selection was cancelled."
         case .selectionFailed(let message): message
@@ -53,9 +53,14 @@ enum ScreenCaptureError: LocalizedError {
         case .notRecording:
             "There isn't an active recording to stop."
         case .emptyRecording:
-            "No video frames were recorded. Check Screen Recording access in System Settings and try again."
+            "No video frames were recorded. If Poach is already enabled in Screen & System Audio Recording, quit and reopen Poach. If it still fails, macOS may not recognize this signed copy as the app you approved."
         }
     }
+}
+
+struct ScreenCaptureRecording {
+    let url: URL
+    let pointerTrace: PointerTrace
 }
 
 @available(macOS 15.0, *)
@@ -68,6 +73,9 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     private var finishContinuation: CheckedContinuation<Void, Error>?
     private var didFinish = false
     private var recordingError: Error?
+    private var pointerTraceRecorder: PointerTraceRecorder?
+    private var activeSelectedRegion: SelectedRegion?
+    private var recordingAreaShadow: RecordingAreaShadowWindowController?
 
     func startRecording(mode: PoachCaptureMode, beforeCapture: @MainActor () async throws -> Void) async throws {
         let selectedRegion: SelectedRegion?
@@ -113,6 +121,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
             selectedRegion = nil
             try await beforeCapture()
         }
+        activeSelectedRegion = selectedRegion
         let selectedRect: CGRect?
         selectedRect = selectedRegion?.rect
 
@@ -157,16 +166,32 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
 
         // Hide the setup UI before the first captured frame.
         NSApp.hide(nil)
+        let captureBounds = Self.pointerCaptureBounds(filter: filter, selectedRegion: selectedRegion)
+        let traceRecorder = PointerTraceRecorder(captureBounds: captureBounds)
         do {
             try await stream.startCapture()
+            _ = traceRecorder.start()
+            pointerTraceRecorder = traceRecorder
         } catch {
             if Self.isPermissionDenied(error) { throw ScreenCaptureError.permissionDenied }
             throw error
         }
     }
 
-    func stopRecording() async throws -> URL {
+    func showRecordingAreaShadow() {
+        guard let selectedRegion = activeSelectedRegion,
+              let screen = Self.screen(for: selectedRegion.displayID) else { return }
+        let shadow = RecordingAreaShadowWindowController(screen: screen, area: selectedRegion.rect)
+        recordingAreaShadow = shadow
+        shadow.show()
+    }
+
+    func stopRecording() async throws -> ScreenCaptureRecording {
+        recordingAreaShadow?.close()
+        recordingAreaShadow = nil
         guard let stream, let outputURL else { throw ScreenCaptureError.notRecording }
+        let pointerTrace = pointerTraceRecorder?.stop() ?? .unavailable(bounds: .zero)
+        pointerTraceRecorder = nil
         try await stream.stopCapture()
         try await waitForRecordingFinish()
         guard FileManager.default.fileExists(atPath: outputURL.path),
@@ -176,7 +201,31 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         }
         self.stream = nil
         self.outputURL = nil
-        return outputURL
+        return ScreenCaptureRecording(url: outputURL, pointerTrace: pointerTrace)
+    }
+
+    private static func pointerCaptureBounds(filter: SCContentFilter, selectedRegion: SelectedRegion?) -> CGRect {
+        if let selectedRegion,
+           let screen = screen(for: selectedRegion.displayID) {
+            let selectedRect = selectedRegion.rect
+            return CGRect(
+                x: screen.frame.minX + selectedRect.minX,
+                y: screen.frame.maxY - selectedRect.maxY,
+                width: selectedRect.width,
+                height: selectedRect.height
+            )
+        }
+        // includedWindows/includedDisplays require macOS 15.2, while the
+        // capture service supports macOS 15.0. contentRect is available there
+        // and uses screen-point coordinates for both window and display filters.
+        let contentRect = filter.contentRect.standardized
+        return contentRect.width > 0 && contentRect.height > 0 ? contentRect : .zero
+    }
+
+    private static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == displayID
+        }
     }
 
     private func chooseDisplay(from displays: [SCDisplay]) throws -> SCDisplay {
@@ -237,7 +286,8 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
 
     nonisolated private static func isPermissionDenied(_ error: Error) -> Bool {
         let nsError = error as NSError
-        if nsError.domain == SCStreamErrorDomain && nsError.code == -3801 { return true }
+        if nsError.domain == SCStreamError.errorDomain,
+           nsError.code == SCStreamError.Code.userDeclined.rawValue { return true }
         if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
             return isPermissionDenied(underlyingError)
         }
@@ -367,6 +417,84 @@ private final class RegionSelectionWindowController {
 
 private final class RegionSelectionPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+@MainActor
+private final class RecordingAreaShadowWindowController {
+    private let screen: NSScreen
+    private let area: CGRect
+    private var panel: NSPanel?
+
+    init(screen: NSScreen, area: CGRect) {
+        self.screen = screen
+        self.area = area.integral
+    }
+
+    func show() {
+        let panel = NSPanel(
+            contentRect: screen.frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Poach — Recording area"
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        panel.hidesOnDeactivate = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.isMovable = false
+        panel.becomesKeyOnlyIfNeeded = false
+        panel.contentView = NSHostingView(rootView: RecordingAreaShadowView(area: area))
+        panel.setFrame(screen.frame, display: true)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            panel.animator().alphaValue = 1
+        }
+        self.panel = panel
+    }
+
+    func close() {
+        guard let panel else { return }
+        self.panel = nil
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.14
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            Task { @MainActor in panel.orderOut(nil) }
+        })
+    }
+}
+
+private struct RecordingAreaShadowView: View {
+    let area: CGRect
+
+    var body: some View {
+        GeometryReader { geometry in
+            Canvas { context, size in
+                var outsideArea = Path(CGRect(origin: .zero, size: size))
+                outsideArea.addRect(area)
+                context.fill(
+                    outsideArea,
+                    with: .color(.black.opacity(0.24)),
+                    style: FillStyle(eoFill: true)
+                )
+
+                context.drawLayer { edge in
+                    edge.addFilter(.shadow(color: .black.opacity(0.42), radius: 16, x: 0, y: 3))
+                    edge.stroke(Path(area), with: .color(.white.opacity(0.22)), lineWidth: 1)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .allowsHitTesting(false)
+        }
+        .background(.clear)
+        .accessibilityHidden(true)
+    }
 }
 
 private struct RegionSelectionView: View {

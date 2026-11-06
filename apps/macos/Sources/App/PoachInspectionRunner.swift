@@ -7,6 +7,13 @@ struct PoachInspection: Codable {
     let keyframes: [PoachKeyframe]
     let palette: [String]
     let timing: PoachTiming
+    var pointerTrace: PointerTrace?
+    var annotations: [InteractionAnnotation]?
+}
+
+struct InteractionAnnotation: Codable {
+    let timeMs: Int
+    let text: String
 }
 
 struct PoachKeyframe: Codable {
