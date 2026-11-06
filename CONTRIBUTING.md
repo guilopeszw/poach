@@ -42,6 +42,8 @@ The Swift package targets macOS 14 or later. Testing native screen recording req
 swift build --package-path apps/macos
 ```
 
+Run the pointer-trace event-cap regression check with `bash scripts/test-pointer-trace-buffer.sh`.
+
 To build a Finder-openable app bundle, run `bash scripts/build-macos-app.sh`. It creates `outputs/Poach.app`, which is ignored by Git.
 
 ### Screen recording signing

@@ -27,36 +27,19 @@ struct PointerTrace: Codable {
     }
 }
 
-struct PointerTraceEvent: Codable {
-    enum Kind: String, Codable { case move, down, up, drag }
-    enum Button: String, Codable { case left, right, other }
-
-    let timeMs: Int
-    let kind: Kind
-    let x: Double
-    let y: Double
-    let button: Button?
-    let withinCapture: Bool
-}
-
 /// Samples only pointer location and mouse-button state during an explicit capture.
 /// It installs no event monitor/tap and never reads keyboard input.
 @MainActor
 final class PointerTraceRecorder {
-    private static let maximumEvents = 5_000
     private static let interval: TimeInterval = 1.0 / 120.0
     private static let logger = Logger(subsystem: "dev.poach.app", category: "PointerTrace")
 
     private let captureBounds: CGRect
     private var timer: Timer?
     private var startedAt: TimeInterval?
-    private var events: [PointerTraceEvent] = []
+    private var trace = PointerTraceBuffer()
     private var lastPoint: CGPoint?
     private var pressedButtons: Set<PointerTraceEvent.Button> = []
-    private var truncated = false
-    private var sampleCount = 0
-    private var insideSampleCount = 0
-    private var buttonSampleCount = 0
 
     init(captureBounds: CGRect) { self.captureBounds = captureBounds.standardized }
 
@@ -73,27 +56,25 @@ final class PointerTraceRecorder {
     func stop() -> PointerTrace {
         timer?.invalidate()
         timer = nil
-        Self.logger.notice("Pointer trace finished: samples=\(self.sampleCount, privacy: .public), inside=\(self.insideSampleCount, privacy: .public), buttonSamples=\(self.buttonSampleCount, privacy: .public), events=\(self.events.count, privacy: .public)")
+        Self.logger.notice("Pointer trace finished: samples=\(self.trace.sampleCount, privacy: .public), inside=\(self.trace.insideSampleCount, privacy: .public), buttonSamples=\(self.trace.buttonSampleCount, privacy: .public), events=\(self.trace.events.count, privacy: .public)")
         return PointerTrace(available: startedAt != nil, coordinateSpace: "normalized-capture-bounds",
                             origin: "top-left", boundsWidth: Double(captureBounds.width),
                             boundsHeight: Double(captureBounds.height), sampleIntervalMs: Self.interval * 1_000,
-                            sampleCount: sampleCount, insideSampleCount: insideSampleCount,
-                            buttonSampleCount: buttonSampleCount, scrollCaptured: false,
-                            truncated: truncated, events: events)
+                            sampleCount: trace.sampleCount, insideSampleCount: trace.insideSampleCount,
+                            buttonSampleCount: trace.buttonSampleCount, scrollCaptured: false,
+                            truncated: trace.truncated, events: trace.events)
     }
 
     private func sample() {
-        guard let startedAt, !truncated else { return }
-        sampleCount += 1
+        guard let startedAt else { return }
         let point = NSEvent.mouseLocation
         let inside = captureBounds.contains(point)
-        if inside { insideSampleCount += 1 }
         var buttons = Set<PointerTraceEvent.Button>()
         if CGEventSource.buttonState(.combinedSessionState, button: .left) { buttons.insert(.left) }
         if CGEventSource.buttonState(.combinedSessionState, button: .right) { buttons.insert(.right) }
         if CGEventSource.buttonState(.combinedSessionState, button: .center) { buttons.insert(.other) }
-        if !buttons.isEmpty { buttonSampleCount += 1 }
-        if sampleCount == 1 {
+        trace.recordSample(inside: inside, buttonHeld: !buttons.isEmpty)
+        if trace.sampleCount == 1 {
             Self.logger.info("First pointer sample: insideCapture=\(inside, privacy: .public), buttonCount=\(buttons.count, privacy: .public)")
         }
 
@@ -117,10 +98,9 @@ final class PointerTraceRecorder {
 
     private func append(_ kind: PointerTraceEvent.Kind, button: PointerTraceEvent.Button?, point: CGPoint,
                         startedAt: TimeInterval, withinCapture: Bool) {
-        guard events.count < Self.maximumEvents else { truncated = true; return }
         let x = min(1, max(0, (point.x - captureBounds.minX) / captureBounds.width))
         let y = min(1, max(0, (captureBounds.maxY - point.y) / captureBounds.height))
-        events.append(PointerTraceEvent(timeMs: Int(max(0, (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000).rounded()),
-                                        kind: kind, x: x, y: y, button: button, withinCapture: withinCapture))
+        trace.append(PointerTraceEvent(timeMs: Int(max(0, (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000).rounded()),
+                                       kind: kind, x: x, y: y, button: button, withinCapture: withinCapture))
     }
 }
