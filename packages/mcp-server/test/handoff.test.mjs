@@ -36,6 +36,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.equal(shared.content.filter(item => item.type === "image").length, 1);
   const actions = shared.structuredContent.evidence.interactionActions.actions;
   assert.deepEqual(actions.map(action => action.kind), ["click", "drag", "drag"]);
+  assert.equal(shared.structuredContent.evidence.interactionActions.samplingBased, true);
   assert.equal(actions[2].durationMs, 200);
   assert.equal(shared.structuredContent.evidence.pointerTrace.sampleIntervalMs, 1000 / 120);
   assert.equal(shared.structuredContent.evidence.pointerTrace.sampleCount, 132);
@@ -47,7 +48,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.ok(!moment.isError);
   assert.equal(moment.content.filter(item => item.type === "image").length, 1);
   assert.match(moment.content.find(item => item.type === "text").text, /The heart fills on click/);
-  assert.match(moment.content.find(item => item.type === "text").text, /observed clicks\/drags/);
+  assert.match(moment.content.find(item => item.type === "text").text, /sample-derived click\/drag candidates/);
   assert.match(moment.content.find(item => item.type === "text").text, /Pointer trace summary: 132 samples, 110 inside the capture, 12 with a button held, 8 recorded pointer events, and 3 summarized clicks or drags\./);
   for (const name of ["poach_read_brief", "poach_read_moment"]) {
     const args = name === "poach_read_moment" ? { timeMs: 500 } : {};
@@ -70,6 +71,19 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   const emptyTraceMoment = await client.callTool({ name: "poach_read_moment", arguments: { timeMs: 1000 } });
   assert.ok(!emptyTraceMoment.isError);
   assert.match(emptyTraceMoment.content.find(item => item.type === "text").text, /Pointer trace summary: 44 samples, 40 inside the capture, 0 with a button held, 0 recorded pointer events, and 0 summarized clicks or drags\./);
+  const unavailableTrace = {
+    ...brief,
+    evidence: {
+      ...brief.evidence,
+      pointerTrace: { ...brief.evidence.pointerTrace, available: false, sampleCount: 0, insideSampleCount: 0, buttonSampleCount: 0, events: [] },
+    },
+  };
+  await writeFile(path, JSON.stringify(unavailableTrace));
+  const unavailableMoment = await client.callTool({ name: "poach_read_moment", arguments: { timeMs: 1000 } });
+  assert.ok(!unavailableMoment.isError);
+  const unavailableText = unavailableMoment.content.find(item => item.type === "text").text;
+  assert.match(unavailableText, /No native pointer trace was included/);
+  assert.doesNotMatch(unavailableText, /Pointer trace summary:/);
   await writeFile(path, JSON.stringify({ ...brief, sharedAt: brief.sharedAt - 86401 }));
   const expired = await client.callTool({ name: "poach_read_brief", arguments: {} });
   assert.equal(expired.isError, true);
