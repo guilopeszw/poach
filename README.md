@@ -7,7 +7,7 @@
 
 ## What does Poach do?
 
-Record how an interface responds to a click, hover, or drag. Poach keeps a local, timestamped pointer trace during native screen recordings, then lets you add notes directly to the video timeline. Share the capture with Codex or Claude so your assistant can inspect the frames, sample-derived click/drag candidates, and your notes while recreating the interaction. The pointer sampler can miss brief actions, and the trace alone cannot confirm what an action did.
+Record how an interface responds to a click, hover, or drag. Poach keeps a local, timestamped pointer trace during native screen recordings, then lets you add notes directly to the video timeline. Share the capture with Codex or Claude so your assistant can inspect the frames, sample-derived click/drag candidates, and your notes while recreating the interaction. Polling can miss or misclassify brief actions, and the trace alone cannot confirm what an action did.
 
 ## From screen to chat
 

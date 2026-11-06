@@ -231,7 +231,7 @@ struct FloatingHUDView: View {
             event.kind == .down || event.kind == .up || event.kind == .drag
         }
         if hasButtonTransitions {
-            return "The native pointer trace contains sampled button transitions and may provide click/drag summaries. Sampling can miss brief actions; correlate trace events with frames and notes, and do not infer an interaction's effect from the trace alone."
+            return "The native pointer trace contains sampled button transitions and may provide click/drag candidates. Polling can miss or misclassify brief actions; correlate trace events with frames and notes, and do not infer an interaction's effect from the trace alone."
         }
         if pointerTrace.sampleCount > 0 {
             return "The native pointer sampler collected \(pointerTrace.sampleCount) samples, including \(pointerTrace.insideSampleCount) inside the capture bounds, but observed no button-down, button-up, or drag events. Do not claim clicks or drags; rely on visible video and notes, and ask if behavior is unclear."
