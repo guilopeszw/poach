@@ -4,7 +4,8 @@ cd "$(dirname "$0")/.."
 bash scripts/build-macos-app.sh
 release="outputs/beta"
 mkdir -p "$release"
-ditto -c -k --keepParent outputs/Poach.app "$release/Poach-$(uname -m).zip"
+app_archive="Poach-$(uname -m).zip"
+ditto -c -k --keepParent outputs/Poach.app "$release/$app_archive"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 mkdir "$stage/Poach Codex"
@@ -16,3 +17,7 @@ ditto -c -k --keepParent "$stage/Poach Codex" "$release/Poach-Codex.zip"
 cp outputs/connectors/Poach.mcpb "$release/"
 cp outputs/runtime-cache/ffmpeg-8.1.3.tar.xz "$release/"
 cp scripts/bundle-runtime.sh "$release/"
+(
+  cd "$release"
+  shasum -a 256 "$app_archive" Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh > SHA256SUMS.txt
+)

@@ -10,13 +10,22 @@ permissions:
 jobs:
   smoke:
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
       - name: Install release assets without a source checkout
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -p Poach-arm64.zip -p Poach.mcpb -p Poach-Codex.zip
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          if [ -f SHA256SUMS.txt ]; then
+            shasum -a 256 -c SHA256SUMS.txt
+          elif [[ ! "$RELEASE_TAG" =~ ^v0\.1\.0-beta\.[1-4]$ ]]; then
+            echo "Release $RELEASE_TAG must include SHA256SUMS.txt" >&2
+            exit 1
+          else
+            echo "Legacy beta has no checksum manifest; skipping digest verification."
+          fi
           mkdir -p "$HOME/Applications" claude
           ditto -x -k Poach-arm64.zip "$HOME/Applications"
           ditto -x -k Poach-Codex.zip .
@@ -33,6 +42,49 @@ jobs:
           export PATH="$resources/runtime/bin:$PATH"
           ffmpeg -v error -loop 1 -i "$resources/Pouch.png" -t 1 -vf scale=96:96 -c:v mpeg4 -pix_fmt yuv420p "$RUNNER_TEMP/sample.mp4"
           export PATH=/usr/bin:/bin
+          "$resources/runtime/bin/node" --input-type=module - "$HOME/Library/Caches/Poach/active-brief.json" "$RUNNER_TEMP/sample.mp4" "$resources/Pouch.png" <<'JS'
+          import {mkdir, writeFile} from 'node:fs/promises';
+          import {dirname} from 'node:path';
+          const [briefPath, videoPath, imagePath] = process.argv.slice(2);
+          const brief = {
+            version: 1,
+            briefId: 'df5ff2b4-663c-41ec-8de2-5c90e837bd82',
+            sharedAt: Date.now() / 1000,
+            context: '[0.50s] The card moves into Done after a drag.',
+            instruction: 'Recreate this interaction.',
+            evidence: {
+              mediaType: 'video',
+              sourcePath: videoPath,
+              keyframes: [{imagePath, kind: 'start', timeMs: 0}],
+              annotations: [{timeMs: 500, text: 'The card lands in Done.'}],
+              pointerTrace: {
+                available: true,
+                coordinateSpace: 'normalized-capture-bounds',
+                origin: 'top-left',
+                boundsWidth: 800,
+                boundsHeight: 600,
+                sampleIntervalMs: 1000 / 120,
+                sampleCount: 96,
+                insideSampleCount: 84,
+                buttonSampleCount: 18,
+                scrollCaptured: false,
+                truncated: false,
+                events: [
+                  {timeMs: 100, kind: 'down', x: 0.5, y: 0.4, button: 'left', withinCapture: true},
+                  {timeMs: 140, kind: 'up', x: 0.5, y: 0.4, button: 'left', withinCapture: true},
+                  {timeMs: 250, kind: 'down', x: 0.1, y: 0.2, button: 'left', withinCapture: true},
+                  {timeMs: 350, kind: 'drag', x: 0.5, y: 0.5, button: 'left', withinCapture: true},
+                  {timeMs: 450, kind: 'up', x: 0.8, y: 0.8, button: 'left', withinCapture: true},
+                  {timeMs: 600, kind: 'down', x: 0.998, y: 0.5, button: 'left', withinCapture: true},
+                  {timeMs: 700, kind: 'drag', x: 1, y: 0.5, button: 'left', withinCapture: false},
+                  {timeMs: 800, kind: 'up', x: 1, y: 0.5, button: 'left', withinCapture: false},
+                ],
+              },
+            },
+          };
+          await mkdir(dirname(briefPath), {recursive: true});
+          await writeFile(briefPath, JSON.stringify(brief), {mode: 0o600});
+          JS
           for launcher in "Poach Codex/marketplace/plugins/poach/launch-connector.sh" claude/launch-connector.sh; do
             "$resources/runtime/bin/node" --input-type=module - "$launcher" "$RUNNER_TEMP/sample.mp4" <<'JS'
           import {spawn} from 'node:child_process';
@@ -53,9 +105,36 @@ jobs:
           try {
             await request(1,'initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'beta-test',version:'1'}});
             send({method:'notifications/initialized'});
-            const result = await request(2,'tools/call',{name:'poach_inspect',arguments:{videoPath:process.argv[3]}});
-            assert.ok(!result.isError, JSON.stringify(result.content));
-            assert.ok(result.structuredContent.keyframes.length);
+            const listed = await request(2,'tools/list',{});
+            const toolNames = listed.tools.map(tool => tool.name);
+            for (const name of ['poach_inspect','poach_read_brief','poach_read_moment']) assert.ok(toolNames.includes(name), `Missing ${name}`);
+
+            const inspected = await request(3,'tools/call',{name:'poach_inspect',arguments:{videoPath:process.argv[3]}});
+            assert.ok(!inspected.isError, JSON.stringify(inspected.content));
+            assert.ok(inspected.structuredContent.keyframes.length);
+
+            const briefId = 'df5ff2b4-663c-41ec-8de2-5c90e837bd82';
+            const brief = await request(4,'tools/call',{name:'poach_read_brief',arguments:{briefId,includeKeyframes:true}});
+            assert.ok(!brief.isError, JSON.stringify(brief.content));
+            assert.equal(brief.structuredContent.briefId, briefId);
+            assert.equal(brief.content.filter(item => item.type === 'image').length, 1);
+            assert.equal(brief.structuredContent.evidence.annotations[0].timeMs, 500);
+            assert.equal(brief.structuredContent.evidence.annotations[0].text, 'The card lands in Done.');
+            assert.equal(brief.structuredContent.evidence.pointerTrace.sampleCount, 96);
+            assert.equal(brief.structuredContent.evidence.pointerTrace.insideSampleCount, 84);
+            const actions = brief.structuredContent.evidence.interactionActions.actions;
+            assert.deepEqual(actions.map(action => action.kind), ['click','drag','drag']);
+            assert.deepEqual(actions.map(action => action.timeMs), [100,250,600]);
+            assert.equal(actions[2].durationMs, 200);
+
+            const moment = await request(5,'tools/call',{name:'poach_read_moment',arguments:{briefId,timeMs:350}});
+            assert.ok(!moment.isError, JSON.stringify(moment.content));
+            assert.equal(moment.content.filter(item => item.type === 'image').length, 1);
+            const momentText = moment.content.find(item => item.type === 'text').text;
+            assert.match(momentText, /The card lands in Done/);
+            assert.match(momentText, /"kind":"click"/);
+            assert.match(momentText, /"kind":"drag"/);
+            assert.match(momentText, /Pointer trace summary: 96 samples, 84 inside the capture, 18 with a button held, 8 recorded pointer events, and 3 summarized clicks or drags\./);
           } finally { server.kill(); }
           JS
           done

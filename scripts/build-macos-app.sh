@@ -4,9 +4,16 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 destination="$repo_root/outputs/Poach.app"
 node_path="$(command -v node || true)"
-signing_identity="${POACH_CODESIGN_IDENTITY:--}"
-if [[ -z "${POACH_CODESIGN_IDENTITY:-}" ]] && security find-identity -v -p codesigning | grep -q '"Poach Local Development"'; then
+available_signing_identities="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+signing_identity="${POACH_CODESIGN_IDENTITY:-}"
+if [[ -z "$signing_identity" ]]; then
+  signing_identity="$(sed -n 's/.*"\(Apple Development:[^"]*\)"/\1/p' <<< "$available_signing_identities" | head -n 1)"
+fi
+if [[ -z "$signing_identity" ]] && grep -q '"Poach Local Development"' <<< "$available_signing_identities"; then
   signing_identity="Poach Local Development"
+fi
+if [[ -z "$signing_identity" ]]; then
+  signing_identity="-"
 fi
 
 if [[ -z "$node_path" ]]; then
@@ -56,13 +63,18 @@ done
 codesign --verify --strict "$runtime/bin/node"
 if [[ "$signing_identity" == "-" ]]; then
   codesign --force --sign - "$app_path"
-  echo "Development build: ad-hoc signing can invalidate Screen Recording approval after rebuilding. Set POACH_CODESIGN_IDENTITY to a stable code-signing identity." >&2
+  echo "Development build: ad-hoc signing can invalidate Screen Recording approval after rebuilding. Use an Apple Development identity from Xcode or set POACH_CODESIGN_IDENTITY explicitly." >&2
 elif [[ "$signing_identity" == "Poach Local Development" ]]; then
   codesign --force --options runtime --timestamp=none --sign "$signing_identity" "$app_path"
 else
   codesign --force --options runtime --timestamp --sign "$signing_identity" "$app_path"
 fi
 codesign --verify --strict "$app_path"
+signature_details="$(codesign --display --verbose=4 "$app_path" 2>&1)"
+team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<< "$signature_details" | head -n 1)"
+if [[ "$team_identifier" == "not set" || -z "$team_identifier" ]]; then
+  echo "Warning: this build has no Apple Team ID. On macOS 26, Screen Recording approval may not persist across builds. Use an Apple Development identity from Xcode or set POACH_CODESIGN_IDENTITY explicitly." >&2
+fi
 
 # Replacing signed executable pages in place can terminate a running Poach.
 if [[ -d "$destination" ]]; then

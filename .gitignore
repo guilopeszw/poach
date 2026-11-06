@@ -18,3 +18,4 @@ outputs/compiled-icon/
 outputs/beta/
 outputs/runtime-cache/
 outputs/.poach-build.*/
+outputs/poach-launch-kit/
