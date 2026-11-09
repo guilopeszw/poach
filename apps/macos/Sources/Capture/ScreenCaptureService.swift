@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import SwiftUI
 
 enum PoachCaptureMode: String, CaseIterable, Identifiable {
