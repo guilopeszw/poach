@@ -377,10 +377,12 @@ private final class RegionSelectionWindowController {
                 panel.hasShadow = false
                 panel.becomesKeyOnlyIfNeeded = false
                 panel.isMovable = false
-                panel.contentView = NSHostingView(rootView: RegionSelectionView(
+                panel.contentView = TransparentHostingView(rootView: RegionSelectionView(
                     onSelect: { [weak self] rect in self?.finish(.success(SelectedRegion(displayID: displayID, rect: rect))) },
                     onCancel: { [weak self] in self?.finish(.failure(ScreenCaptureError.selectionCancelled)) }
                 ))
+                panel.backgroundColor = .clear
+                panel.isOpaque = false
                 panel.setFrame(screen.frame, display: true)
                 self.panels.append(panel)
                 panel.orderFrontRegardless()
@@ -420,6 +422,19 @@ private final class RegionSelectionPanel: NSPanel {
 }
 
 @MainActor
+private final class TransparentHostingView<Content: View>: NSHostingView<Content> {
+    override var isOpaque: Bool { false }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.backgroundColor = .clear
+        window?.isOpaque = false
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.isOpaque = false
+    }
+}
+
+@MainActor
 private final class RecordingAreaShadowWindowController {
     private let screen: NSScreen
     private let area: CGRect
@@ -447,7 +462,9 @@ private final class RecordingAreaShadowWindowController {
         panel.ignoresMouseEvents = true
         panel.isMovable = false
         panel.becomesKeyOnlyIfNeeded = false
-        panel.contentView = NSHostingView(rootView: RecordingAreaShadowView(area: area))
+        panel.contentView = TransparentHostingView(rootView: RecordingAreaShadowView(area: area))
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
         panel.setFrame(screen.frame, display: true)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -500,6 +517,7 @@ private struct RecordingAreaShadowView: View {
 private struct RegionSelectionView: View {
     let onSelect: (CGRect) -> Void
     let onCancel: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var origin: CGPoint?
     @State private var current: CGPoint?
     @State private var countdownValue: Int?
@@ -528,9 +546,9 @@ private struct RegionSelectionView: View {
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
-                        guard countdownValue == nil else { return }
-                        origin = value.startLocation
-                        current = value.location
+                        guard countdownTask == nil else { return }
+                        origin = clamped(value.startLocation, to: geometry.size)
+                        current = clamped(value.location, to: geometry.size)
                     })
                     .allowsHitTesting(countdownValue == nil)
 
@@ -603,12 +621,17 @@ private struct RegionSelectionView: View {
         .onDisappear { countdownTask?.cancel() }
     }
 
+    private func clamped(_ point: CGPoint, to size: CGSize) -> CGPoint {
+        CGPoint(x: min(max(point.x, 0), size.width), y: min(max(point.y, 0), size.height))
+    }
+
     private func beginCountdown() {
-        guard countdownValue == nil, let selectedArea = selection?.integral else { return }
+        guard countdownTask == nil, let selectedArea = selection?.integral,
+              selectedArea.width >= 32, selectedArea.height >= 32 else { return }
         countdownTask = Task { @MainActor in
             for count in stride(from: 3, through: 1, by: -1) {
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.18)) { countdownValue = count }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { countdownValue = count }
                 do {
                     try await Task.sleep(for: .seconds(1))
                 } catch {
