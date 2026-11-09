@@ -51,7 +51,8 @@ The timer control must live in the capture selection UI itself. That works for *
 ### During the countdown: the screen is free
 
 - The point of the timer is to let the user prepare the screen (open a menu, hover something, focus another app). So when the countdown starts, the dimming goes away and the overlay stops catching clicks (`ignoresMouseEvents`). Only an outline of the chosen target (area, display or window) and the countdown number stay visible.
-- Because another app may take focus, Esc no longer reaches Poach. Cancelling the countdown uses ✕ on Poach's countdown UI or the existing global hotkey ⌘⇧P.
+- Esc cancels the countdown even when another app has focus (user decision). Poach registers Esc as a global hotkey only while the countdown runs and unregisters it the moment the countdown ends or is cancelled. ✕ on the countdown UI and ⌘⇧P also cancel.
+- Known consequence: during the countdown, Esc pressed to close a menu in another app cancels the capture instead and does not reach that app.
 - This applies to all three modes, including the Screen area flow already built on this branch, which currently blocks the screen during the countdown and has to be reworked.
 
 ### Space bar
@@ -98,4 +99,4 @@ Per `AGENTS.md`, update `README.md` and `CONTRIBUTING.md` where capture behaviou
 - Window mode: the highlight follows the pointer across windows and displays, Poach's own windows are never offered, and the recording contains only the chosen window.
 - Space starts from the selection panel; Space stops only when the recording panel is focused; typing spaces in other apps during a recording does nothing to Poach.
 - Keyboard only: Tab reaches the timer, arrows change it, Return starts, Esc cancels. In window/display mode, Tab cycles targets. VoiceOver reads the labels above.
-- During a 10s countdown, clicks reach the apps underneath and ⌘⇧P or ✕ cancels.
+- During a 10s countdown, clicks reach the apps underneath, and Esc (with another app focused), ✕ or ⌘⇧P cancels. After the countdown, Esc reaches other apps normally again.
