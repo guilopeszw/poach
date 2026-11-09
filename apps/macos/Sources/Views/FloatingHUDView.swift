@@ -1,5 +1,5 @@
 import SwiftUI
-import AVKit
+import AVFoundation
 
 struct HUDPaletteToken: Identifiable {
     let hex: String
@@ -349,21 +349,23 @@ private struct BriefEditorLayout: Layout {
 private struct CaptureVideoPlayer: NSViewRepresentable {
     let player: AVPlayer?
 
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
-        view.controlsStyle = .none
-        view.videoGravity = .resizeAspect
-        view.showsFullScreenToggleButton = false
-        view.player = player
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        let videoLayer = AVPlayerLayer(player: player)
+        videoLayer.videoGravity = .resizeAspect
+        view.layer = videoLayer
+        view.wantsLayer = true
         return view
     }
 
-    func updateNSView(_ view: AVPlayerView, context: Context) {
-        if view.player !== player { view.player = player }
+    func updateNSView(_ view: NSView, context: Context) {
+        guard let videoLayer = view.layer as? AVPlayerLayer else { return }
+        if videoLayer.player !== player { videoLayer.player = player }
     }
 
-    static func dismantleNSView(_ view: AVPlayerView, coordinator: ()) {
-        view.player?.pause()
-        view.player = nil
+    static func dismantleNSView(_ view: NSView, coordinator: ()) {
+        guard let videoLayer = view.layer as? AVPlayerLayer else { return }
+        videoLayer.player?.pause()
+        videoLayer.player = nil
     }
 }
