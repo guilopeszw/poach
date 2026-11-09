@@ -2,6 +2,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct PoachHomeView: View {
+    private enum CaptureType: String, CaseIterable {
+        case record = "Record"
+        case screenshot = "Screenshot"
+
+        var symbol: String {
+            self == .record ? "record.circle" : "camera"
+        }
+    }
+
     let icon: NSImage
     let isWorking: Bool
     var workingTitle: String = "Preparing your capture…"
@@ -9,6 +18,7 @@ struct PoachHomeView: View {
     let elapsedSeconds: Int
     @Binding var captureMode: PoachCaptureMode
     let onStartRecording: () -> Void
+    var onScreenshot: () -> Void = {}
     let onStopRecording: () -> Void
     let onLoadMedia: () -> Void
 
@@ -22,15 +32,12 @@ struct PoachHomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var settings = false
+    @State private var captureType = CaptureType.record
 
     private var primaryTitle: String {
         if isRecording { return "Stop and inspect · \(clock(elapsedSeconds)) / 0:30" }
         if isWorking && loadingFile == nil { return workingTitle }
-        switch captureMode {
-        case .selectedPortion: return "Select an area…"
-        case .fullScreen: return "Choose a screen…"
-        case .window: return "Choose a window…"
-        }
+        return captureType == .screenshot ? "Take screenshot…" : "Record…"
     }
 
     var body: some View {
@@ -66,22 +73,28 @@ struct PoachHomeView: View {
     }
 
     private var captureControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Record the screen")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Capture the screen")
                 .font(.system(size: 19, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
-            PoachSegments(label: "Recording mode", selection: $captureMode,
-                          choices: PoachCaptureMode.allCases.map { ($0, $0.title) })
-            .disabled(isWorking || isRecording)
+            PoachSegments(label: "Capture type", selection: $captureType,
+                          choices: CaptureType.allCases.map { ($0, $0.rawValue) },
+                          symbol: { $0.symbol })
+                .frame(width: 210)
+                .disabled(isWorking || isRecording)
 
-            Button(action: isRecording ? onStopRecording : onStartRecording) {
-                Label(primaryTitle, systemImage: isRecording ? "stop.fill" : "record.circle")
+            PoachSegments(label: "Capture source", selection: $captureMode,
+                          choices: PoachCaptureMode.allCases.map { ($0, $0.title) })
+                .disabled(isWorking || isRecording)
+
+            Button(action: performCaptureAction) {
+                Label(primaryTitle, systemImage: isRecording ? "stop.fill" : captureType.symbol)
+                    .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PoachActionStyle(fill: isRecording ? .red : PoachPalette.ink, foreground: .white))
             .keyboardShortcut(.defaultAction)
             .disabled(isWorking)
-
 
             if let loadingFile {
                 HStack(alignment: .top, spacing: 12) {
@@ -140,6 +153,12 @@ struct PoachHomeView: View {
             .disabled(isWorking || isRecording)
             }
         }
+    }
+
+    private func performCaptureAction() {
+        if isRecording { onStopRecording() }
+        else if captureType == .screenshot { onScreenshot() }
+        else { onStartRecording() }
     }
 
     private var header: some View {

@@ -34,6 +34,8 @@ enum ScreenCaptureError: LocalizedError {
     case selectionFailed(String)
     case noDisplay
     case recordingUnavailable
+    case screenshotUnavailable
+    case screenshotRequiresNewerMacOS
     case notRecording
     case emptyRecording
 
@@ -50,6 +52,10 @@ enum ScreenCaptureError: LocalizedError {
             "Poach couldn't find the selected display. Connect a display and try again."
         case .recordingUnavailable:
             "This Mac doesn't report a compatible screen recording format."
+        case .screenshotRequiresNewerMacOS:
+            "Taking a screenshot in Poach requires macOS 15 or later. You can still import an existing image."
+        case .screenshotUnavailable:
+            "Poach couldn’t create a PNG from this selection."
         case .notRecording:
             "There isn't an active recording to stop."
         case .emptyRecording:
@@ -77,11 +83,12 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     private var activeSelectedRegion: SelectedRegion?
     private var recordingAreaShadow: RecordingAreaShadowWindowController?
 
-    func startRecording(mode: PoachCaptureMode, beforeCapture: @MainActor () async throws -> Void) async throws {
+    private func selectTarget(mode: PoachCaptureMode, screenshot: Bool) async throws
+        -> (filter: SCContentFilter, selectedRegion: SelectedRegion?) {
         let selectedRegion: SelectedRegion?
         let filter: SCContentFilter
         if mode == .selectedPortion {
-            let region = try await RegionSelectionWindowController.shared.selectRegion()
+            let region = try await RegionSelectionWindowController.shared.selectRegion(screenshot: screenshot)
             let content: SCShareableContent
             do {
                 content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
@@ -119,8 +126,40 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
                 filter = SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
             }
             selectedRegion = nil
-            try await beforeCapture()
         }
+        return (filter, selectedRegion)
+    }
+
+    func captureScreenshot(mode: PoachCaptureMode) async throws -> URL {
+        let (filter, region) = try await selectTarget(mode: mode, screenshot: true)
+        NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
+        let sourceSize = region?.rect.size ?? filter.contentRect.size
+        let scale = CGFloat(filter.pointPixelScale)
+        guard sourceSize.width > 0, sourceSize.height > 0, scale > 0 else {
+            throw ScreenCaptureError.screenshotUnavailable
+        }
+        let configuration = SCStreamConfiguration()
+        configuration.width = max(1, Int((sourceSize.width * scale).rounded()))
+        configuration.height = max(1, Int((sourceSize.height * scale).rounded()))
+        configuration.showsCursor = false
+        if let region { configuration.sourceRect = region.rect }
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            throw ScreenCaptureError.screenshotUnavailable
+        }
+        let fm = FileManager.default
+        let directory = fm.temporaryDirectory.appending(path: "Poach", directoryHint: .isDirectory)
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appending(path: "screenshot-\(UUID().uuidString).png")
+        guard fm.createFile(atPath: url.path, contents: png, attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return url
+    }
+
+    func startRecording(mode: PoachCaptureMode, beforeCapture: @MainActor () async throws -> Void) async throws {
+        let (filter, selectedRegion) = try await selectTarget(mode: mode, screenshot: false)
+        if selectedRegion == nil { try await beforeCapture() }
         activeSelectedRegion = selectedRegion
         let selectedRect: CGRect?
         selectedRect = selectedRegion?.rect
@@ -355,7 +394,7 @@ private final class RegionSelectionWindowController {
     private var panels: [NSPanel] = []
     private var continuation: CheckedContinuation<SelectedRegion, Error>?
 
-    func selectRegion() async throws -> SelectedRegion {
+    func selectRegion(screenshot: Bool) async throws -> SelectedRegion {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             NSApp.unhide(nil)
@@ -378,6 +417,7 @@ private final class RegionSelectionWindowController {
                 panel.becomesKeyOnlyIfNeeded = false
                 panel.isMovable = false
                 panel.contentView = TransparentHostingView(rootView: RegionSelectionView(
+                    screenshot: screenshot,
                     onSelect: { [weak self] rect in self?.finish(.success(SelectedRegion(displayID: displayID, rect: rect))) },
                     onCancel: { [weak self] in self?.finish(.failure(ScreenCaptureError.selectionCancelled)) }
                 ))
@@ -515,6 +555,7 @@ private struct RecordingAreaShadowView: View {
 }
 
 private struct RegionSelectionView: View {
+    let screenshot: Bool
     let onSelect: (CGRect) -> Void
     let onCancel: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -560,7 +601,7 @@ private struct RegionSelectionView: View {
                 }
 
                 VStack(spacing: 10) {
-                    Text(countdownValue != nil ? "Get ready — recording starts shortly" : selection == nil ? "Drag to select an area" : "Ready to record")
+                    Text(countdownValue != nil ? "Get ready — recording starts shortly" : selection == nil ? "Drag to select an area" : screenshot ? "Ready to take a screenshot" : "Ready to record")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.primary)
 
@@ -581,19 +622,19 @@ private struct RegionSelectionView: View {
                         .help("Cancel")
 
                         Button {
-                            beginCountdown()
+                            confirmSelection()
                         } label: {
-                            Image(systemName: "circle.fill")
+                            Image(systemName: screenshot ? "camera" : "circle.fill")
                                 .font(.system(size: 13))
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 32)
-                                .background(Color.red, in: RoundedRectangle(cornerRadius: 9))
+                                .background(screenshot ? PoachPalette.ink : Color.red, in: RoundedRectangle(cornerRadius: 9))
                                 .contentTransition(.symbolEffect(.replace))
                         }
                         .buttonStyle(.plain)
                         .disabled((selection?.width ?? 0) < 32 || (selection?.height ?? 0) < 32 || countdownValue != nil)
-                        .accessibilityLabel("Start recording")
-                        .help("Start the three-second countdown (Return)")
+                        .accessibilityLabel(screenshot ? "Take screenshot" : "Start recording")
+                        .help(screenshot ? "Take screenshot (Return)" : "Start the three-second countdown (Return)")
                         .keyboardShortcut(.defaultAction)
                     }
                 }
@@ -625,9 +666,13 @@ private struct RegionSelectionView: View {
         CGPoint(x: min(max(point.x, 0), size.width), y: min(max(point.y, 0), size.height))
     }
 
-    private func beginCountdown() {
+    private func confirmSelection() {
         guard countdownTask == nil, let selectedArea = selection?.integral,
               selectedArea.width >= 32, selectedArea.height >= 32 else { return }
+        if screenshot {
+            onSelect(selectedArea)
+            return
+        }
         countdownTask = Task { @MainActor in
             for count in stride(from: 3, through: 1, by: -1) {
                 guard !Task.isCancelled else { return }

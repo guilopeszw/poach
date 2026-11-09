@@ -15,6 +15,7 @@ struct PoachSegments<Value: Hashable>: View {
     @Binding var selection: Value
     let choices: [(Value, String)]
     var underlined = false
+    var symbol: (Value) -> String? = { _ in nil }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -22,7 +23,14 @@ struct PoachSegments<Value: Hashable>: View {
                 Button {
                     selection = value
                 } label: {
-                    Text(title)
+                    Group {
+                        if let name = symbol(value) {
+                            Label(title, systemImage: name)
+                                .labelStyle(.titleAndIcon)
+                        } else {
+                            Text(title)
+                        }
+                    }
                         .font(.system(size: 12, weight: selection == value ? .semibold : .regular))
                         .foregroundStyle(PoachPalette.ink)
                         .frame(maxWidth: .infinity, minHeight: 22)

@@ -52,6 +52,10 @@ struct PoachApp: App {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                Button("Take screenshot…", action: takeScreenshot)
+                    .buttonStyle(.plain)
+                    .disabled(isWorking || isRecording)
+
                 Button("Load video or image…", action: loadMedia)
                     .buttonStyle(.plain)
                     .disabled(isWorking || isRecording)
@@ -92,6 +96,7 @@ struct PoachApp: App {
                     elapsedSeconds: elapsedSeconds,
                     captureMode: $captureMode,
                     onStartRecording: startRecording,
+                    onScreenshot: takeScreenshot,
                     onStopRecording: { Task { await stopRecording() } },
                     onLoadMedia: loadMedia,
                     onDropMedia: loadMedia(at:),
@@ -204,6 +209,31 @@ struct PoachApp: App {
         }
     }
 
+    private func takeScreenshot() {
+        guard !isWorking, !isRecording else { return }
+        workingTitle = "Preparing screenshot…"
+        isWorking = true
+        Task {
+            defer { isWorking = false }
+            do {
+                guard #available(macOS 15.0, *) else { throw ScreenCaptureError.screenshotRequiresNewerMacOS }
+                let imageURL = try await ScreenCaptureService().captureScreenshot(mode: captureMode)
+                hudWindow.showPreparing("Opening screenshot…")
+                let result = try await PoachInspectionRunner.inspect(videoURL: imageURL) { stage in
+                    hudWindow.preparation.steps.append(stage)
+                }
+                hudWindow.show(result, status: hudWindow.preparation, original: imageURL)
+            } catch {
+                NSApp.unhide(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.windows.first { $0.title == "Poach" }?.makeKeyAndOrderFront(nil)
+                if (error as? ScreenCaptureError)?.isUserCancelled != true {
+                    showCaptureStartError(error, title: "Poach couldn't take this screenshot")
+                }
+            }
+        }
+    }
+
     private func startRecording() {
         guard !isWorking, !isRecording else { return }
         Self.captureLog.notice("Capture selection requested")
@@ -297,7 +327,7 @@ struct PoachApp: App {
         alert.runModal()
     }
 
-    private func showCaptureStartError(_ error: Error) {
+    private func showCaptureStartError(_ error: Error, title: String = "Poach couldn't start recording") {
         let nsError = error as NSError
         let isPermissionDenied: Bool
         if let captureError = error as? ScreenCaptureError, case .permissionDenied = captureError {
@@ -307,7 +337,7 @@ struct PoachApp: App {
                 && nsError.code == SCStreamError.Code.userDeclined.rawValue
         }
         guard isPermissionDenied else {
-            showError(title: "Poach couldn't start recording", error: error)
+            showError(title: title, error: error)
             return
         }
 
@@ -545,8 +575,8 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         NSApp.windows.first { $0.title == "Poach" }?.makeKeyAndOrderFront(nil)
     }
 
-    func showPreparing() {
-        preparation.begin("Opening recording…")
+    func showPreparing(_ title: String = "Opening recording…") {
+        preparation.begin(title)
         let panel = self.panel ?? makePanel()
         panel.title = "Poach — Preparing your brief"
         panel.contentView = NSHostingView(rootView:

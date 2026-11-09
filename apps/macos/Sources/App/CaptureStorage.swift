@@ -59,7 +59,9 @@ enum CaptureStorage {
         for dir in try fm.contentsOfDirectory(at: temp, includingPropertiesForKeys: nil) {
             let pattern: String
             switch dir.lastPathComponent {
-            case "Poach": pattern = #"^capture-[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\.mov$"#
+            case "Poach":
+                let id = #"[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}"#
+                pattern = #"^(?:capture-\#(id)\.mov|screenshot-\#(id)\.png)$"#
             case let name where name.range(of: "^poach-recording-[a-zA-Z0-9]{6}$", options: .regularExpression) != nil:
                 pattern = #"^recording\.mp4$"#
             case let name where name.range(of: "^poach-[a-zA-Z0-9]{6}$", options: .regularExpression) != nil:
