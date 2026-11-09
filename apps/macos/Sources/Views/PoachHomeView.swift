@@ -110,23 +110,21 @@ struct PoachHomeView: View {
                 .accessibilityElement(children: .contain)
             } else {
                 Button(action: onLoadMedia) {
-                    HStack(spacing: 11) {
-                        Image(systemName: targeted ? "arrow.down.to.line" : "tray")
+                    VStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .medium))
-                            .frame(width: 29)
+                            .frame(width: 28, height: 28)
+                            .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 9))
+                            .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
+                            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(targeted ? "Release to open" : "Open a file")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Drop an image or video here").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.medium))
+                        Text("Drop an image or video")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("or click to browse")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
                     }
-                    .padding(12)
+                    .padding(6)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
                                 in: RoundedRectangle(cornerRadius: 10))
