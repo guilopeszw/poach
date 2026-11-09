@@ -54,11 +54,12 @@ struct MCPConnectorView: View {
                         NSPasteboard.general.clearContents()
                         copied = NSPasteboard.general.setString(text, forType: .string) ? assistant : nil
                     } label: {
-                        Label(assistant.rawValue, systemImage: copied == assistant ? "checkmark" : "doc.on.doc")
+                        Label("Copy \(assistant.rawValue)", systemImage: copied == assistant ? "checkmark" : "doc.on.doc")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PoachActionStyle())
                     .disabled(configuration(for: assistant) == nil)
+                    .help("Copy \(assistant.rawValue) MCP setup")
                     .accessibilityLabel("Copy \(assistant.rawValue) MCP")
                     .accessibilityValue(copied == assistant ? "Copied" : "")
                 }
