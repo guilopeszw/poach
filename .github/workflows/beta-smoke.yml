@@ -43,7 +43,27 @@ jobs:
           ditto -x -k Poach-arm64.zip "$HOME/Applications"
           ditto -x -k Poach-Codex.zip .
           unzip -q Poach.mcpb -d claude
+      - name: Verify packaged versions against the release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            expected_version="${BASH_REMATCH[1]}"
+            check_version() {
+              local file="$1" key="$2" actual_version
+              actual_version="$(plutil -extract "$key" raw "$file")"
+              if [[ "$actual_version" != "$expected_version" ]]; then
+                echo "$file reports $actual_version, expected $expected_version for $RELEASE_TAG" >&2
+                return 1
+              fi
+            }
+            check_version "$HOME/Applications/Poach.app/Contents/Info.plist" CFBundleShortVersionString
+            check_version "Poach Codex/marketplace/plugins/poach/.codex-plugin/plugin.json" version
+            check_version claude/manifest.json version
+          fi
       - name: Open the app and exercise both connector launchers
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           export PATH=/usr/bin:/bin
           app="$HOME/Applications/Poach.app"
@@ -130,24 +150,32 @@ jobs:
             const brief = await request(4,'tools/call',{name:'poach_read_brief',arguments:{briefId,includeKeyframes:true}});
             assert.ok(!brief.isError, JSON.stringify(brief.content));
             assert.equal(brief.structuredContent.briefId, briefId);
-            assert.equal(brief.content.filter(item => item.type === 'image').length, 1);
+            const legacyBeta = /^v0\.1\.0-beta\.[1-4]$/.test(process.env.RELEASE_TAG ?? '');
+            assert.equal(brief.content.filter(item => item.type === 'image').length, legacyBeta ? 1 : 4);
+            if (!legacyBeta) {
+              assert.ok(brief.content.some(item => item.type === 'text' && item.text.startsWith('After drag release:')));
+            }
             assert.equal(brief.structuredContent.evidence.annotations[0].timeMs, 500);
             assert.equal(brief.structuredContent.evidence.annotations[0].text, 'The card lands in Done.');
             assert.equal(brief.structuredContent.evidence.pointerTrace.sampleCount, 96);
             assert.equal(brief.structuredContent.evidence.pointerTrace.insideSampleCount, 84);
-            const actions = brief.structuredContent.evidence.interactionActions.actions;
-            assert.deepEqual(actions.map(action => action.kind), ['click','drag','drag']);
-            assert.deepEqual(actions.map(action => action.timeMs), [100,250,600]);
-            assert.equal(actions[2].durationMs, 200);
+            if (!legacyBeta) {
+              const actions = brief.structuredContent.evidence.interactionActions.actions;
+              assert.deepEqual(actions.map(action => action.kind), ['click','drag','drag']);
+              assert.deepEqual(actions.map(action => action.timeMs), [100,250,600]);
+              assert.equal(actions[2].durationMs, 200);
+            }
 
             const moment = await request(5,'tools/call',{name:'poach_read_moment',arguments:{briefId,timeMs:350}});
             assert.ok(!moment.isError, JSON.stringify(moment.content));
             assert.equal(moment.content.filter(item => item.type === 'image').length, 1);
             const momentText = moment.content.find(item => item.type === 'text').text;
-            assert.match(momentText, /The card lands in Done/);
-            assert.match(momentText, /"kind":"click"/);
-            assert.match(momentText, /"kind":"drag"/);
-            assert.match(momentText, /Pointer trace summary: 96 samples, 84 inside the capture, 18 with a button held, 8 recorded pointer events, and 3 summarized clicks or drags\./);
+            if (!legacyBeta) {
+              assert.match(momentText, /The card lands in Done/);
+              assert.match(momentText, /"kind":"click"/);
+              assert.match(momentText, /"kind":"drag"/);
+              assert.match(momentText, /Pointer trace summary: 96 samples, 84 inside the capture, 18 with a button held, 8 recorded pointer events, and 3 summarized clicks or drags\./);
+            }
           } finally { server.kill(); }
           JS
           done
