@@ -9,6 +9,34 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const exec = promisify(execFile);
+
+async function makeVideoFixture(videoPath, rgb, afterRGB) {
+  const width = 96;
+  const height = 64;
+  const headerSize = 54;
+  const pixels = Buffer.alloc(headerSize + width * height * 3);
+  pixels.write("BM");
+  pixels.writeUInt32LE(pixels.length, 2);
+  pixels.writeUInt32LE(headerSize, 10);
+  pixels.writeUInt32LE(40, 14);
+  pixels.writeInt32LE(width, 18);
+  pixels.writeInt32LE(height, 22);
+  pixels.writeUInt16LE(1, 26);
+  pixels.writeUInt16LE(24, 28);
+  if (afterRGB) {
+    for (let frame = 0; frame < 10; frame++) {
+      pixels.fill(Buffer.from([...(frame < 8 ? rgb : afterRGB)].reverse()), headerSize);
+      await writeFile(`${videoPath}-${frame}.bmp`, pixels);
+    }
+    await exec("ffmpeg", ["-v", "error", "-framerate", "5", "-i", `${videoPath}-%d.bmp`, "-c:v", "mpeg4", "-pix_fmt", "yuv420p", videoPath]);
+    return;
+  }
+  pixels.fill(Buffer.from([...rgb].reverse()), headerSize);
+  const imagePath = `${videoPath}.bmp`;
+  await writeFile(imagePath, pixels);
+  await exec("ffmpeg", ["-v", "error", "-loop", "1", "-i", imagePath, "-t", "2", "-c:v", "mpeg4", "-pix_fmt", "yuv420p", videoPath]);
+}
+
 test("shared brief carries notes and visual moments through MCP", { timeout: 30_000 }, async (t) => {
   const home = await mkdtemp(join(tmpdir(), "poach-handoff-test-"));
   t.after(() => rm(home, { recursive: true, force: true }));
@@ -109,7 +137,75 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   await writeFile(path, JSON.stringify({ ...brief, sharedAt: brief.sharedAt - 86401 }));
   const expired = await client.callTool({ name: "poach_read_brief", arguments: {} });
   assert.equal(expired.isError, true);
-  await assert.rejects(access(path));
+  assert.match(expired.content[0].text, /expired/);
+  await access(path);
+});
+
+test("archived briefs remain readable by ID after a newer brief is shared", { timeout: 30_000 }, async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "poach-brief-archive-test-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const cache = join(home, "Library/Caches/Poach");
+  const archive = join(cache, "briefs");
+  await mkdir(archive, { recursive: true });
+  const olderVideo = join(home, "older.mp4");
+  const latestVideo = join(home, "latest.mp4");
+  await makeVideoFixture(olderVideo, [255, 0, 0]);
+  await makeVideoFixture(latestVideo, [0, 0, 255]);
+
+  const older = {
+    version: 1,
+    briefId: "a2e9bf72-26b9-4a9d-888a-fc47ad798813",
+    sharedAt: Date.now() / 1000,
+    context: "First prompt: make the PNG badge red.",
+    instruction: "Recreate the recorded interaction.",
+    evidence: { mediaType: "video", sourcePath: olderVideo, keyframes: [], annotations: [] },
+  };
+  const latest = {
+    ...older,
+    briefId: "b7f24322-2d3c-42e9-8d72-4d5d7ef96441",
+    context: "Second prompt: make the dropzone compact.",
+    evidence: { ...older.evidence, sourcePath: latestVideo },
+  };
+  await writeFile(join(archive, `${older.briefId}.json`), JSON.stringify(older));
+  await writeFile(join(cache, "active-brief.json"), JSON.stringify(latest));
+
+  const client = new Client({ name: "poach-brief-archive-test", version: "1.0.0" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [process.env.POACH_TEST_SERVER ?? new URL("../dist/index.js", import.meta.url).pathname],
+    env: { ...process.env, HOME: home },
+    stderr: "pipe",
+  });
+  await client.connect(transport);
+  t.after(() => client.close());
+
+  const firstPrompt = await client.callTool({ name: "poach_read_brief", arguments: { briefId: older.briefId, includeKeyframes: false } });
+  assert.ok(!firstPrompt.isError);
+  assert.equal(firstPrompt.structuredContent.briefId, older.briefId);
+  assert.equal(firstPrompt.structuredContent.context, older.context);
+
+  const mostRecent = await client.callTool({ name: "poach_read_brief", arguments: { includeKeyframes: false } });
+  assert.ok(!mostRecent.isError);
+  assert.equal(mostRecent.structuredContent.briefId, latest.briefId);
+  assert.equal(mostRecent.structuredContent.context, latest.context);
+
+  const olderMoment = await client.callTool({ name: "poach_read_moment", arguments: { briefId: older.briefId, timeMs: 500 } });
+  const latestMoment = await client.callTool({ name: "poach_read_moment", arguments: { briefId: latest.briefId, timeMs: 500 } });
+  assert.ok(!olderMoment.isError);
+  assert.ok(!latestMoment.isError);
+  const olderFrame = olderMoment.content.find(item => item.type === "image");
+  const latestFrame = latestMoment.content.find(item => item.type === "image");
+  assert.ok(olderFrame);
+  assert.ok(latestFrame);
+  assert.notEqual(olderFrame.data, latestFrame.data, "each brief ID should read its own recording");
+
+  const olderPath = join(archive, `${older.briefId}.json`);
+  await writeFile(olderPath, JSON.stringify({ ...older, sharedAt: older.sharedAt - 86401 }));
+  const expired = await client.callTool({ name: "poach_read_brief", arguments: { briefId: older.briefId } });
+  assert.equal(expired.isError, true);
+  assert.match(expired.content[0].text, /expired/);
+  await assert.rejects(access(olderPath), { code: "ENOENT" });
+  await access(join(cache, "active-brief.json"));
 });
 
 test("connection status follows initialized clients independently", async (t) => {

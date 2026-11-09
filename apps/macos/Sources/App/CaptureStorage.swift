@@ -25,14 +25,33 @@ enum CaptureStorage {
                      cache: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/Poach")) throws -> Usage {
         let fm = FileManager.default
         var paths = openPaths
+        var briefFiles = [cache.appendingPathComponent("active-brief.json")]
+        let archive = cache.appendingPathComponent("briefs", isDirectory: true)
         do {
-            let data = try Data(contentsOf: cache.appendingPathComponent("active-brief.json"))
-            let brief = try JSONDecoder().decode(Handoff.self, from: data)
-            if Date().timeIntervalSince1970 - brief.sharedAt <= 86400 {
-                paths += [brief.evidence.sourcePath] + brief.evidence.keyframes.map(\.imagePath)
-            }
+            briefFiles += try fm.contentsOfDirectory(at: archive, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                .filter { $0.pathExtension == "json" }
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            // No capture has been shared.
+            // No archived briefs exist yet.
+        }
+        for file in briefFiles {
+            let info: URLResourceValues
+            do {
+                info = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                // No capture has been shared, or a brief expired during the scan.
+                continue
+            }
+            guard info.isRegularFile == true, info.isSymbolicLink != true else {
+                throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: file.path])
+            }
+            do {
+                let brief = try JSONDecoder().decode(Handoff.self, from: Data(contentsOf: file))
+                if Date().timeIntervalSince1970 - brief.sharedAt <= 86400 {
+                    paths += [brief.evidence.sourcePath] + brief.evidence.keyframes.map(\.imagePath)
+                }
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                // A brief may expire or be removed while storage is being scanned.
+            }
         }
         let protected = Set(paths.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path })
         let keys: Set<URLResourceKey> = [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey, .fileSizeKey]
