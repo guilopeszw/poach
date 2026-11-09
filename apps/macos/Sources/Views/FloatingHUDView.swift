@@ -11,12 +11,21 @@ struct FloatingHUDView: View {
     let sourceURL: URL
     let isVideo: Bool
     @State private var player: AVPlayer?
+    #if DEBUG
+    @Environment(\.poachDesignFixture) private var designFixture
+    #endif
     @State private var comments: [CaptureComment] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var commentsOpen = false
     @State private var sidebarWidth: CGFloat = 0
     private let sidebarFullWidth: CGFloat = 230
-    private var editorWidth: CGFloat { min(550, (NSScreen.main?.visibleFrame.width ?? 800) - 48) }
+    let availableWidth: CGFloat
+    let availableHeight: CGFloat
+    private var overlaysComments: Bool { availableWidth < 600 }
+    private var editorWidth: CGFloat {
+        min(550, availableWidth - (isVideo && !overlaysComments ? sidebarFullWidth : 0))
+    }
+    private var commentWidth: CGFloat { overlaysComments ? min(260, editorWidth - 42) : sidebarFullWidth }
     @State private var playback = CommentPlayback()
     let status: InspectionStatus
     let palette: [HUDPaletteToken]
@@ -31,23 +40,29 @@ struct FloatingHUDView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-        VStack(alignment: .leading, spacing: 12) {
+        BriefEditorLayout(heightLimit: availableHeight - 32, isVideo: isVideo) {
             header
 
+            Color.clear.overlay {
+                if isVideo {
+                    CaptureVideoPlayer(player: player)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } else if let image = NSImage(contentsOf: sourceURL) {
+                    Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+                }
+            }
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 12) {
             if isVideo {
-                CaptureVideoPlayer(player: player)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 CommentTimeline(playback: playback, comments: $comments, isOpen: $commentsOpen)
-            } else if let image = NSImage(contentsOf: sourceURL) {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit).frame(maxHeight: 260)
             }
 
             InspectionStatusLabel(status: status)
 
             VStack(alignment: .leading, spacing: 9) {
-                Text("Colors").font(.headline)
+                Text("Palette").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 HStack(spacing: 7) {
                     ForEach(palette) { token in
                         VStack(alignment: .leading, spacing: 5) {
@@ -69,11 +84,23 @@ struct FloatingHUDView: View {
             }
 
             VStack(alignment: .leading, spacing: 9) {
-                Text("Instructions").font(.headline)
-                TextField("What should your assistant build or change?", text: $context, axis: .vertical)
-                    .lineLimit(nil)
-                    .textFieldStyle(.plain)
-                    .padding(9)
+                Text("Instructions").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                TextEditor(text: $context)
+                    .font(.system(size: 13))
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 64)
+                    .padding(6)
+                    .overlay(alignment: .topLeading) {
+                        if context.isEmpty {
+                            Text("Describe what to recreate or change.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 11)
+                                .padding(.top, 10)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
                     .background(PoachPalette.panel, in: RoundedRectangle(cornerRadius: 6))
                     .overlay {
                         RoundedRectangle(cornerRadius: 6)
@@ -84,7 +111,7 @@ struct FloatingHUDView: View {
                     .onChange(of: context) { shareStatus = "Changes have not been shared yet." }
             }
 
-            Button("Copy handoff for chat") {
+            Button {
                 connected = Self.hasLiveConnector()
                 guard connected else { return }
                 do {
@@ -92,7 +119,7 @@ struct FloatingHUDView: View {
                         InteractionAnnotation(timeMs: Int(($0.time * 1_000).rounded()), text: $0.text)
                     }
                     let id = try onShareContext(implementationContext, annotations)
-                    let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets; use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
+                    let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets. For a drag, inspect the frames after release and include visible changes through the end of the response. Use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
                     NSPasteboard.general.clearContents()
                     let copied = NSPasteboard.general.setString(message, forType: .string)
                     shareStatus = copied ? "Handoff copied." : "Clipboard unavailable. Click Copy handoff to try again."
@@ -101,46 +128,54 @@ struct FloatingHUDView: View {
                     shareStatus = "Could not share: \(error.localizedDescription)"
                 }
             }
+            label: {
+                Label("Copy handoff for chat", systemImage: "doc.on.doc")
+                    .frame(maxWidth: .infinity)
+            }
             .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
             .disabled(!connected)
             if !connected {
                 Button { showingAssistantSetup = true } label: {
-                Label {
-                    Text("Set up Poach MCP in Codex or Claude.")
-                        .font(.caption)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .symbolRenderingMode(.multicolor)
-                        .foregroundStyle(.yellow)
+                    Label("Connect Codex or Claude", systemImage: "link")
+                        .font(.caption.weight(.medium))
                 }
-                .foregroundStyle(Color(red: 0.46, green: 0.38, blue: 0.10))
-                }.buttonStyle(.plain).accessibilityHint("Opens Settings")
+                .buttonStyle(.link)
+                .accessibilityHint("Opens assistant setup")
             }
             if !shareStatus.isEmpty {
                 Text(shareStatus).font(.caption).foregroundStyle(.secondary)
             }
-
+            }
         }
         .padding(16)
         .frame(width: editorWidth)
         .preferredColorScheme(.light)
-        if isVideo && sidebarWidth > 0 {
-            CommentSidebar(playback: playback, comments: $comments)
-                .frame(width: sidebarFullWidth)
-                .overlay(alignment: .leading) { Divider() }
-                .frame(width: sidebarWidth, alignment: .leading)
-                .clipped()
-                .allowsHitTesting(commentsOpen)
+        .accessibilityHidden(overlaysComments && commentsOpen)
+        if isVideo && !overlaysComments && sidebarWidth > 0 {
+            commentSidebar(heightLimit: availableHeight)
         }
         }
         .background(PoachPalette.canvas)
         .preferredColorScheme(.light)
-        .frame(width: editorWidth + sidebarWidth)
+        .frame(width: editorWidth + (overlaysComments ? 0 : sidebarWidth))
         .fixedSize(horizontal: false, vertical: true)
+        .overlay(alignment: .trailing) {
+            if overlaysComments && sidebarWidth > 0 {
+                GeometryReader { geometry in
+                    ZStack(alignment: .topTrailing) {
+                        Color.black.opacity(0.12 * sidebarWidth / commentWidth)
+                            .contentShape(Rectangle())
+                            .onTapGesture { commentsOpen = false }
+                            .accessibilityHidden(true)
+                        commentSidebar(heightLimit: geometry.size.height)
+                    }
+                }
+                .allowsHitTesting(commentsOpen)
+            }
+        }
         .clipped()
-        .task(id: commentsOpen) {
-            let available = (NSScreen.main?.visibleFrame.width ?? 800) - 32 - editorWidth
-            let target = commentsOpen ? max(0, min(sidebarFullWidth, available)) : 0
+        .task(id: commentsOpen ? commentWidth : 0) {
+            let target = commentsOpen ? commentWidth : 0
             let start = sidebarWidth
             guard target != start else { return }
             guard !reduceMotion else { sidebarWidth = target; return }
@@ -163,16 +198,32 @@ struct FloatingHUDView: View {
             }
             frame.origin.y += (frame.height - frameSize.height) / 2
             frame.size = frameSize
+            if let visible = panel.screen?.visibleFrame {
+                frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+            }
             panel.setFrame(frame, display: true)
         }
         .sheet(isPresented: $showingAssistantSetup) { AssistantSetupView() }
         .task {
+            #if DEBUG
+            if let designFixture {
+                connected = designFixture.connected
+                return
+            }
+            #endif
             while !Task.isCancelled {
                 connected = Self.hasLiveConnector()
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
             }
         }
         .onAppear {
+            #if DEBUG
+            if let designFixture {
+                comments = designFixture.comments
+                context = designFixture.instructions
+                commentsOpen = isVideo && !overlaysComments
+            }
+            #endif
             if isVideo {
                 let newPlayer = AVPlayer(url: sourceURL)
                 player = newPlayer
@@ -181,6 +232,18 @@ struct FloatingHUDView: View {
         }
         .onChange(of: comments) { shareStatus = "Changes have not been shared yet." }
         .onDisappear { playback.detach(); player = nil }
+    }
+
+    private func commentSidebar(heightLimit: CGFloat) -> some View {
+        CommentSidebar(playback: playback, comments: $comments, heightLimit: heightLimit,
+                       onClose: overlaysComments ? { commentsOpen = false } : nil)
+            .frame(width: commentWidth)
+            .overlay(alignment: .leading) { Divider() }
+            .frame(width: overlaysComments ? commentWidth : sidebarWidth, alignment: .leading)
+            .clipped()
+            .offset(x: overlaysComments ? commentWidth - sidebarWidth : 0)
+            .allowsHitTesting(commentsOpen)
+            .accessibilityHidden(!commentsOpen)
     }
 
     private static func hasLiveConnector() -> Bool {
@@ -199,12 +262,16 @@ struct FloatingHUDView: View {
     private var header: some View {
         HStack(spacing: 11) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Review your capture")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-                Text("Make a brief for your assistant")
-                    .font(.system(size: 11, weight: .medium))
+                Text(isVideo ? "Recording" : "Image")
+                    .font(.system(size: 16, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text(sourceURL.lastPathComponent)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(sourceURL.lastPathComponent)
+                    .accessibilityLabel(sourceURL.lastPathComponent)
             }
             Spacer(minLength: 0)
             Button("New capture") {
@@ -245,6 +312,38 @@ struct FloatingHUDView: View {
             Int((rgb.greenComponent * 255).rounded()), Int((rgb.blueComponent * 255).rounded()))
     }
 
+}
+
+// Measure the controls at their natural height and give the remaining space to the preview.
+private struct BriefEditorLayout: Layout {
+    let heightLimit: CGFloat
+    let isVideo: Bool
+    private let gap: CGFloat = 12
+
+    private func heights(width: CGFloat, subviews: Subviews) -> (header: CGFloat, preview: CGFloat, controls: CGFloat) {
+        let column = ProposedViewSize(width: width, height: nil)
+        let header = subviews[0].sizeThatFits(column).height
+        let controls = subviews[2].sizeThatFits(column).height
+        let idealPreview = isVideo ? width * 9 / 16 : min(width, 260)
+        let preview = min(idealPreview, max(0, heightLimit - header - controls - 2 * gap))
+        return (header, preview, controls)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 518
+        let height = heights(width: width, subviews: subviews)
+        return CGSize(width: width, height: height.header + height.preview + height.controls + 2 * gap)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let height = heights(width: bounds.width, subviews: subviews)
+        subviews[0].place(at: bounds.origin, anchor: .topLeading,
+                          proposal: ProposedViewSize(width: bounds.width, height: height.header))
+        subviews[1].place(at: CGPoint(x: bounds.minX, y: bounds.minY + height.header + gap), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: bounds.width, height: height.preview))
+        subviews[2].place(at: CGPoint(x: bounds.minX, y: bounds.maxY - height.controls), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: bounds.width, height: height.controls))
+    }
 }
 
 private struct CaptureVideoPlayer: NSViewRepresentable {

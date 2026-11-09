@@ -14,11 +14,11 @@ struct PoachHomeView: View {
 
     let onDropMedia: (URL) -> Void
     let loadingFile: URL?
+    var layoutWidth: CGFloat?
     @ObservedObject var status: InspectionStatus
     @State private var targeted = false
     @State private var hovering = false
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
-    @State private var dragEntry = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var settings = false
@@ -40,8 +40,9 @@ struct PoachHomeView: View {
                 Spacer()
                 PoachSegments(label: "Poach", selection: $settings, choices: [(false, "Capture"), (true, "Settings")], underlined: true)
                     .frame(width: 144)
-
             }
+            .padding(.bottom, 5)
+            .overlay(alignment: .bottom) { Divider() }
             Group {
                 if settings {
                     PoachSettingsView(captureBusy: isWorking || isRecording)
@@ -53,27 +54,29 @@ struct PoachHomeView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.14), value: settings)
         }
         .padding(16)
-        .frame(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32),
-               height: 320, alignment: .topLeading)
+        .frame(width: layoutWidth ?? Self.windowSize.width, height: Self.windowSize.height, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .background(PoachPalette.canvas)
         .tint(PoachPalette.ink)
         .preferredColorScheme(.light)
     }
 
+    static var windowSize: NSSize {
+        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 320)
+    }
+
     private var captureControls: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("What do you want to record?").font(.headline)
-                Spacer()
-            }
-            .frame(height: 24)
-            PoachSegments(label: "What do you want to record?", selection: $captureMode,
+            Text("Record the screen")
+                .font(.system(size: 19, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+            PoachSegments(label: "Recording mode", selection: $captureMode,
                           choices: PoachCaptureMode.allCases.map { ($0, $0.title) })
             .disabled(isWorking || isRecording)
 
             Button(action: isRecording ? onStopRecording : onStartRecording) {
-                Text(primaryTitle).frame(maxWidth: .infinity)
+                Label(primaryTitle, systemImage: isRecording ? "stop.fill" : "record.circle")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(PoachActionStyle(fill: isRecording ? .red : PoachPalette.ink, foreground: .white))
             .keyboardShortcut(.defaultAction)
@@ -93,40 +96,36 @@ struct PoachHomeView: View {
                 .background(.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .contain)
             } else {
-            Button(action: onLoadMedia) {
-                VStack(spacing: 6) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 17, weight: .medium))
-                        .frame(width: 34, height: 34)
-                        .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 9))
-                        .foregroundStyle(.primary)
-                        .keyframeAnimator(initialValue: 0.0, trigger: dragEntry) { [animate = targeted && !reduceMotion] icon, displacement in
-                            let offset = animate ? displacement : 0
-                            icon.rotationEffect(.degrees(offset * 1.6))
-                                .offset(x: offset)
-                        } keyframes: { _ in
-                            CubicKeyframe(-3.0, duration: 0.045)
-                            CubicKeyframe(3.0, duration: 0.065)
-                            CubicKeyframe(-1.8, duration: 0.055)
-                            CubicKeyframe(0.9, duration: 0.05)
-                            CubicKeyframe(0.0, duration: 0.065)
+                Button(action: onLoadMedia) {
+                    HStack(spacing: 11) {
+                        Image(systemName: targeted ? "arrow.down.to.line" : "tray")
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 29)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(targeted ? "Release to open" : "Open a file")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Drop an image or video here").font(.caption).foregroundStyle(.secondary)
                         }
-                    Text("Drop an image or video")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("or click to browse").font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline)
+                            .allowsHitTesting(false)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 99, maxHeight: .infinity)
-                .background(PoachPalette.canvas)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14)
-                        .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline)
-                        .allowsHitTesting(false)
-                }
+                .accessibilityLabel("Open an image or video")
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: highlightDropZone)
-                .contentShape(Rectangle())
-            }
             .onHover { hovering = $0 }
             .onDisappear { hovering = false }
             .buttonStyle(.plain)
@@ -138,13 +137,9 @@ struct PoachHomeView: View {
                 }
                 return true
             }
-            .onChange(of: targeted) {
-                if targeted && !reduceMotion { dragEntry += 1 }
-            }
             .disabled(isWorking || isRecording)
             }
         }
-        .animation(reduceMotion ? nil : .spring(duration: 0.28, bounce: 0.1), value: loadingFile)
     }
 
     private var header: some View {

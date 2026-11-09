@@ -10,7 +10,7 @@ struct AssistantSetupView: View {
             Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(minWidth: 300, idealWidth: 400)
         .background(PoachPalette.canvas)
         .preferredColorScheme(.light)
     }
@@ -45,17 +45,23 @@ struct MCPConnectorView: View {
     }
 
     var body: some View {
-        HStack {
-            Text("MCP").font(.headline)
-            Spacer()
-            ForEach(Assistant.allCases, id: \.self) { assistant in
-                Button(copied == assistant ? "Copied ✓" : "Copy \(assistant.rawValue) MCP") {
-                    guard let text = configuration(for: assistant) else { return }
-                    NSPasteboard.general.clearContents()
-                    copied = NSPasteboard.general.setString(text, forType: .string) ? assistant : nil
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Connect an assistant").font(.subheadline.weight(.semibold))
+            HStack(spacing: 8) {
+                ForEach(Assistant.allCases, id: \.self) { assistant in
+                    Button {
+                        guard let text = configuration(for: assistant) else { return }
+                        NSPasteboard.general.clearContents()
+                        copied = NSPasteboard.general.setString(text, forType: .string) ? assistant : nil
+                    } label: {
+                        Label(assistant.rawValue, systemImage: copied == assistant ? "checkmark" : "doc.on.doc")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PoachActionStyle())
+                    .disabled(configuration(for: assistant) == nil)
+                    .accessibilityLabel("Copy \(assistant.rawValue) MCP")
+                    .accessibilityValue(copied == assistant ? "Copied" : "")
                 }
-                .disabled(configuration(for: assistant) == nil)
-                .accessibilityLabel("Copy \(assistant.rawValue) MCP")
             }
         }
         .task(id: copied) {
@@ -84,22 +90,26 @@ struct PoachSettingsView: View {
     @AppStorage("defaultCaptureMode") private var defaultMode = PoachCaptureMode.selectedPortion.rawValue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Settings")
+                .font(.system(size: 19, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
             HStack {
-                Text("Window position")
+                Text("Window edge")
                 Spacer()
                 PoachSegments(label: "Window position", selection: $edge, choices: [("left", "Left"), ("right", "Right")])
                     .frame(width: 140)
             }
             HStack {
-                Text("Default recording mode")
+                Text("Default capture mode")
                 Spacer()
                 Picker("Default recording mode", selection: $defaultMode) {
                     ForEach(PoachCaptureMode.allCases) { mode in Text(mode.title).tag(mode.rawValue) }
                 }
                 .labelsHidden().pickerStyle(.menu).buttonStyle(.plain).fixedSize()
             }
-            .frame(height: 24)
+            .frame(minHeight: 24)
+            Divider()
             MCPConnectorView()
             Divider()
             HStack {

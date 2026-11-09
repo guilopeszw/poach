@@ -16,6 +16,11 @@ struct PoachApp: App {
     @State private var captureServiceStorage: AnyObject?
     @State private var captureMode = PoachCaptureMode(rawValue: UserDefaults.standard.string(forKey: "defaultCaptureMode") ?? "") ?? .selectedPortion
     @AppStorage("defaultCaptureMode") private var defaultMode = PoachCaptureMode.selectedPortion.rawValue
+    @AppStorage("hasShownOnboarding") private var hasShownOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+    @State private var shouldShowOnboarding = !UserDefaults.standard.bool(forKey: "hasShownOnboarding")
+        && !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+    @State private var isMinimizingOnboarding = false
+    @State private var pendingOnboardingAnimation: (() -> Void)?
     @State private var isWorking = false
     @State private var workingTitle = "Preparing your capture…"
     @State private var isRecording = false
@@ -25,32 +30,10 @@ struct PoachApp: App {
 
     var body: some Scene {
         Window("Poach", id: "main") {
-            PoachHomeView(
-                icon: appDelegate.icon,
-                isWorking: isWorking,
-                workingTitle: workingTitle,
-                isRecording: isRecording,
-                elapsedSeconds: elapsedSeconds,
-                captureMode: $captureMode,
-                onStartRecording: startRecording,
-                onStopRecording: { Task { await stopRecording() } },
-                onLoadMedia: loadMedia,
-                onDropMedia: loadMedia(at:),
-                loadingFile: loadingFile, status: importStatus
-            )
-            .background(HomeWindowAnchor())
-            .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
-            .onAppear {
-                hotKeyAvailable = captureHotKey.register {
-                    if isRecording { Task { await stopRecording() } }
-                    else if !isWorking {
-                        captureMode = .selectedPortion
-                        startRecording()
-                    }
-                }
-            }
+            mainWindow
         }
         .defaultSize(width: 440, height: 278)
+        .defaultPosition(.center)
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
 
@@ -83,6 +66,112 @@ struct PoachApp: App {
                 .accessibilityLabel("Poach")
         }
         .menuBarExtraStyle(.window)
+    }
+
+    @ViewBuilder
+    private var mainWindow: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--poach-design-lab") {
+            PoachDesignLab()
+        } else {
+            captureWindow
+        }
+        #else
+        captureWindow
+        #endif
+    }
+
+    private var captureWindow: some View {
+        ZStack {
+            if !shouldShowOnboarding || isMinimizingOnboarding {
+                PoachHomeView(
+                    icon: appDelegate.icon,
+                    isWorking: isWorking,
+                    workingTitle: workingTitle,
+                    isRecording: isRecording,
+                    elapsedSeconds: elapsedSeconds,
+                    captureMode: $captureMode,
+                    onStartRecording: startRecording,
+                    onStopRecording: { Task { await stopRecording() } },
+                    onLoadMedia: loadMedia,
+                    onDropMedia: loadMedia(at:),
+                    loadingFile: loadingFile, status: importStatus
+                )
+                .background(HomeWindowAnchor(
+                    allowsPositioning: { !isMinimizingOnboarding },
+                    onAttach: pendingOnboardingAnimation
+                ))
+                .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
+                .onAppear {
+                    hotKeyAvailable = captureHotKey.register {
+                        if isRecording { Task { await stopRecording() } }
+                        else if !isWorking {
+                            captureMode = .selectedPortion
+                            startRecording()
+                        }
+                    }
+                }
+            }
+            if shouldShowOnboarding {
+                PoachOnboardingView(onContinue: finishOnboarding)
+                .background(HomeWindowAnchor(shouldCenter: { !isMinimizingOnboarding }))
+                .opacity(isMinimizingOnboarding ? 0 : 1)
+                .allowsHitTesting(!isMinimizingOnboarding)
+                .accessibilityHidden(isMinimizingOnboarding)
+                .onAppear { hasShownOnboarding = true }
+                .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { notification in
+                    guard let window = notification.object as? NSWindow, window.title == "Poach" else { return }
+                    // Keep the welcome content in place until AppKit finishes closing it.
+                    DispatchQueue.main.async { shouldShowOnboarding = false }
+                }
+            }
+        }
+    }
+
+    private func finishOnboarding() {
+        guard !isMinimizingOnboarding else { return }
+        guard let window = NSApp.keyWindow, window.title == "Poach" else {
+            shouldShowOnboarding = false
+            return
+        }
+
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let content = window.contentView, let image = windowSnapshot(content),
+              let screen = window.screen ?? NSScreen.main else {
+            shouldShowOnboarding = false
+            return
+        }
+
+        let preview = NSImageView(frame: content.bounds)
+        preview.image = image
+        preview.imageScaling = .scaleProportionallyUpOrDown
+        preview.autoresizingMask = [.width, .height]
+        preview.wantsLayer = true
+        preview.layer?.backgroundColor = NSColor(PoachPalette.canvas).cgColor
+        content.addSubview(preview, positioned: .above, relativeTo: nil)
+
+        let homeRect = window.frameRect(forContentRect: NSRect(origin: .zero, size: PoachHomeView.windowSize))
+        let destination = pinnedFrame(size: homeRect.size, in: screen.visibleFrame)
+        pendingOnboardingAnimation = {
+            pendingOnboardingAnimation = nil
+            content.layoutSubtreeIfNeeded()
+            window.contentMinSize = PoachHomeView.windowSize
+            window.isMovable = false
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.30
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.animator().setFrame(destination, display: true)
+                preview.animator().alphaValue = 0
+            } completionHandler: {
+                Task { @MainActor in
+                    preview.removeFromSuperview()
+                    shouldShowOnboarding = false
+                    isMinimizingOnboarding = false
+                }
+            }
+        }
+        // Mount Capture under the snapshot before starting the window animation.
+        isMinimizingOnboarding = true
     }
 
     private func loadMedia() {
@@ -410,7 +499,7 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         home.animationBehavior = .none
         let destination = home.frame
         guard let content = sender.contentView, let captureContent = home.contentView,
-              let editorImage = snapshot(content), let captureImage = snapshot(captureContent) else {
+              let editorImage = windowSnapshot(content), let captureImage = windowSnapshot(captureContent) else {
             returningToCapture = false
             return true
         }
@@ -446,15 +535,6 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
             }
         }
         return false
-    }
-
-    private func snapshot(_ view: NSView) -> NSImage? {
-        view.layoutSubtreeIfNeeded()
-        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        let image = NSImage(size: view.bounds.size)
-        image.addRepresentation(bitmap)
-        return image
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -494,9 +574,15 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         CaptureStorage.openPaths = [result.sourcePath] + result.keyframes.map(\.imagePath) + [original?.path].compactMap { $0 }
         status.finish()
         let palette = result.palette.map { HUDPaletteToken(hex: $0, color: Color(hex: $0)) }
+        let panel = self.panel ?? makePanel()
+        let screen = panel.screen ?? NSScreen.main
+        let visibleSize = screen?.visibleFrame.size ?? CGSize(width: 800, height: 800)
+        let contentHeight = panel.contentRect(forFrameRect: CGRect(origin: .zero, size: visibleSize)).height
         let view = FloatingHUDView(
             sourceURL: URL(fileURLWithPath: result.sourcePath),
             isVideo: result.mediaType != "image",
+            availableWidth: visibleSize.width - 32,
+            availableHeight: contentHeight - 32,
             status: status,
             palette: palette,
             pointerTrace: result.pointerTrace,
@@ -506,7 +592,6 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
             }
         )
 
-        let panel = self.panel ?? makePanel()
         panel.title = "Poach — Implementation brief"
         panel.contentView = NSHostingView(rootView: view.id(UUID()))
         panel.setContentSize(panel.contentView?.fittingSize ?? NSSize(width: 340, height: 370))
@@ -553,6 +638,7 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
             .appendingPathComponent("Library/Caches/Poach", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
         var evidence = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result)) as? [String: Any] ?? [:]
         evidence["annotations"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(annotations))
         let identifier = UUID().uuidString
@@ -601,17 +687,40 @@ private extension Color {
 func pinToEdge(_ window: NSWindow) {
     guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
     window.isMovable = false
+    window.setFrameOrigin(pinnedFrame(size: window.frame.size, in: visible).origin)
+}
+
+private func pinnedFrame(size: NSSize, in visible: NSRect) -> NSRect {
     let left = UserDefaults.standard.string(forKey: "windowEdge") == "left"
-    window.setFrameOrigin(NSPoint(x: left ? visible.minX + 16 : max(visible.minX, visible.maxX - window.frame.width - 16),
-                                  y: max(visible.minY, visible.midY - window.frame.height / 2)))
+    return NSRect(x: left ? visible.minX + 16 : max(visible.minX, visible.maxX - size.width - 16),
+                  y: max(visible.minY, visible.midY - size.height / 2), width: size.width, height: size.height)
+}
+
+@MainActor
+private func windowSnapshot(_ view: NSView) -> NSImage? {
+    view.layoutSubtreeIfNeeded()
+    guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    let image = NSImage(size: view.bounds.size)
+    image.addRepresentation(bitmap)
+    return image
 }
 
 private struct HomeWindowAnchor: NSViewRepresentable {
+    var shouldCenter: (() -> Bool)?
+    var allowsPositioning: () -> Bool = { true }
+    var onAttach: (() -> Void)?
+
     final class Anchor: NSView {
+        var shouldCenter: (() -> Bool)?
+        var allowsPositioning: () -> Bool = { true }
+        var onAttach: (() -> Void)?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             NotificationCenter.default.removeObserver(self)
             guard let window else { return }
+            if shouldCenter != nil { window.titlebarAppearsTransparent = true }
             for event in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification,
                           NSWindow.didChangeScreenNotification] {
                 NotificationCenter.default.addObserver(self, selector: #selector(realign),
@@ -621,11 +730,32 @@ private struct HomeWindowAnchor: NSViewRepresentable {
         }
 
         @objc private func realign() {
-            guard let window else { return }
-            DispatchQueue.main.async { pinToEdge(window) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                if let onAttach = self.onAttach {
+                    self.onAttach = nil
+                    onAttach()
+                    return
+                }
+                guard self.allowsPositioning() else { return }
+                guard let shouldCenter = self.shouldCenter else {
+                    pinToEdge(window)
+                    return
+                }
+                guard shouldCenter(), let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+                window.setFrameOrigin(NSPoint(x: visible.midX - window.frame.width / 2,
+                                              y: visible.midY - window.frame.height / 2))
+            }
         }
+
     }
-    func makeNSView(context: Context) -> Anchor { Anchor() }
+
+    func makeNSView(context: Context) -> Anchor {
+        let anchor = Anchor()
+        anchor.shouldCenter = shouldCenter
+        anchor.allowsPositioning = allowsPositioning
+        anchor.onAttach = onAttach
+        return anchor
+    }
     func updateNSView(_ view: Anchor, context: Context) {}
 }
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)

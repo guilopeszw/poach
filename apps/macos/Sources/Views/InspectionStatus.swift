@@ -26,7 +26,7 @@ struct InspectionStatusLabel: View {
     private var working: Bool { status.seconds == nil }
     private var expanded: Bool { status.manualExpansion ?? (working && autoExpanded) }
     private var motion: Animation? {
-        reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.4)
+        reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.2)
     }
 
     var body: some View {
@@ -35,25 +35,13 @@ struct InspectionStatusLabel: View {
                 status.manualExpansion = !expanded
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkle")
                     if let seconds = status.seconds {
-                        Text(seconds == 0 ? "Analyzed in under a second" :
+                        Image(systemName: "checkmark.circle")
+                        Text(seconds == 0 ? "Analysis complete" :
                              "Analyzed in \(seconds) \(seconds == 1 ? "second" : "seconds")")
                     } else {
+                        ProgressView().controlSize(.mini)
                         Text("Analyzing capture")
-                            .overlay {
-                                if !reduceMotion {
-                                    TimelineView(.animation(minimumInterval: 1/30)) { tick in
-                                        GeometryReader { bounds in
-                                            let phase = tick.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
-                                            LinearGradient(colors: [.clear, .primary, .clear], startPoint: .leading, endPoint: .trailing)
-                                                .frame(width: bounds.size.width / 2)
-                                                .offset(x: bounds.size.width * (1.5 * phase - 0.5))
-                                        }
-                                    }
-                                    .mask(Text("Analyzing capture"))
-                                }
-                            }
                     }
                     Image(systemName: "chevron.down").font(.caption2)
                         .rotationEffect(.degrees(expanded ? 180 : 0))
@@ -76,7 +64,7 @@ struct InspectionStatusLabel: View {
                             Text(step.replacingOccurrences(of: "…", with: ""))
                         }
                         .font(.caption)
-                        .transition(.offset(y: reduceMotion ? 0 : 4).combined(with: .opacity))
+                        .transition(.opacity)
                     }
                 }
                 .padding(.leading, 14)

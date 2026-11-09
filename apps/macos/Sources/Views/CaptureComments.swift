@@ -19,7 +19,10 @@ final class CommentPlayback {
     var highlighted: CaptureComment?
     private var player: AVPlayer?
     private var observer: Any?
+    private var durationLoad: Task<Void, Never>?
     private var expiry: Task<Void, Never>?
+    private var scrubbing = false
+    private var resumeAfterScrub = false
 
     func attach(_ player: AVPlayer) {
         detach()
@@ -27,14 +30,22 @@ final class CommentPlayback {
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.08, preferredTimescale: 600), queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
+        if let asset = player.currentItem?.asset {
+            durationLoad = Task { [weak self] in
+                guard let length = try? await asset.load(.duration).seconds,
+                      !Task.isCancelled, length.isFinite else { return }
+                self?.duration = max(0, length)
+            }
+        }
     }
 
     private func refresh() {
         guard let player else { return }
-        let length = player.currentItem?.duration.seconds ?? 0
-        duration = length.isFinite ? max(0, length) : 0
+        if let length = player.currentItem?.duration.seconds, length.isFinite, length > 0 {
+            duration = length
+        }
         let position = player.currentTime().seconds
-        time = position.isFinite ? max(0, position) : 0
+        if !scrubbing { time = position.isFinite ? max(0, min(duration, position)) : 0 }
         playing = player.rate != 0
     }
 
@@ -45,6 +56,20 @@ final class CommentPlayback {
         if duration > 0 && time >= duration - 0.02 { seek(0) }
         player?.play()
         refresh()
+    }
+
+    func scrub(_ editing: Bool) {
+        guard editing != scrubbing else { return }
+        scrubbing = editing
+        if editing {
+            resumeAfterScrub = playing
+            pause()
+        } else {
+            let target = time
+            seek(target)
+            if resumeAfterScrub { player?.play() }
+            resumeAfterScrub = false
+        }
     }
 
     func seek(_ seconds: Double) {
@@ -69,14 +94,23 @@ final class CommentPlayback {
 
     func detach() {
         expiry?.cancel()
+        durationLoad?.cancel()
+        durationLoad = nil
         if let observer { player?.removeTimeObserver(observer) }
         player?.pause()
         observer = nil
         player = nil
+        duration = 0
     }
 }
 
 struct CommentTimeline: View {
+    private struct Marker: Identifiable {
+        let x: CGFloat
+        var comments: [CaptureComment]
+        var id: UUID { comments[0].id }
+    }
+
     let playback: CommentPlayback
     @Binding var comments: [CaptureComment]
     @Binding var isOpen: Bool
@@ -93,21 +127,13 @@ struct CommentTimeline: View {
             .accessibilityLabel(playback.playing ? "Pause" : "Play")
             VStack(spacing: 0) {
                 Slider(value: Binding(get: { playback.time }, set: { playback.seek($0) }),
-                       in: 0...max(playback.duration, 0.01))
+                       in: 0...max(playback.duration, 0.01), onEditingChanged: playback.scrub)
                     .accessibilityLabel("Video timeline")
                     .accessibilityValue(timestamp(playback.time))
                 GeometryReader { geometry in
-                    ForEach(comments) { comment in
-                        Button {
-                            isOpen = true
-                            playback.visit(comment)
-                        } label: {
-                            Image(systemName: "bubble.left.fill").font(.caption2).foregroundStyle(Color.accentColor)
-                                .frame(width: 18, height: 18)
-                        }
-                        .buttonStyle(.plain)
-                        .position(x: markerX(comment, width: geometry.size.width), y: 9)
-                        .accessibilityLabel("Comment at \(timestamp(comment.time)): \(comment.text)")
+                    ForEach(markers(width: geometry.size.width)) { marker in
+                        commentMarker(marker)
+                            .position(x: marker.x, y: 9)
                     }
                     if let comment = playback.highlighted {
                         let width = min(200, geometry.size.width)
@@ -136,6 +162,57 @@ struct CommentTimeline: View {
         }
     }
 
+    @ViewBuilder
+    private func commentMarker(_ marker: Marker) -> some View {
+        if marker.comments.count == 1, let comment = marker.comments.first {
+            Button { visit(comment) } label: {
+                markerIcon("bubble.left.fill")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Comment at \(timestamp(comment.time)): \(comment.text)")
+        } else {
+            Menu {
+                ForEach(marker.comments) { comment in
+                    Button("\(timestamp(comment.time))  \(comment.text)") { visit(comment) }
+                }
+            } label: {
+                markerIcon("bubble.left.and.bubble.right.fill")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("\(marker.comments.count) comments")
+            .accessibilityLabel("\(marker.comments.count) comments near \(timestamp(marker.comments[0].time))")
+        }
+    }
+
+    private func markerIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.caption2)
+            .foregroundStyle(Color.accentColor)
+            .frame(width: 18, height: 18)
+            .contentShape(Rectangle())
+    }
+
+    private func visit(_ comment: CaptureComment) {
+        isOpen = true
+        playback.visit(comment)
+    }
+
+    private func markers(width: CGFloat) -> [Marker] {
+        guard playback.duration > 0 else { return [] }
+        var result: [Marker] = []
+        for comment in comments {
+            let x = markerX(comment, width: width)
+            if let previousX = result.last?.x, x - previousX < 24 {
+                result[result.count - 1].comments.append(comment)
+            } else {
+                result.append(Marker(x: x, comments: [comment]))
+            }
+        }
+        return result
+    }
+
     private func markerX(_ comment: CaptureComment, width: CGFloat) -> CGFloat {
         9 + max(0, width - 18) * min(1, comment.time / max(0.01, playback.duration))
     }
@@ -144,6 +221,8 @@ struct CommentTimeline: View {
 struct CommentSidebar: View {
     let playback: CommentPlayback
     @Binding var comments: [CaptureComment]
+    var heightLimit: CGFloat = 410
+    var onClose: (() -> Void)?
     @State private var hovered: UUID?
     @State private var draft = ""
     @State private var anchor: Double?
@@ -151,9 +230,9 @@ struct CommentSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Comments").font(.headline)
-            Divider()
-                VStack(alignment: .leading, spacing: 14) {
+            Text("Comments").font(.headline).accessibilityAddTraits(.isHeader)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     if comments.isEmpty { Text("Comments you add appear here.").foregroundStyle(.secondary) }
                     ForEach(comments) { comment in
                         HStack(alignment: .top, spacing: 4) {
@@ -161,7 +240,10 @@ struct CommentSidebar: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(timestamp(comment.time)).font(.caption.monospacedDigit()).foregroundStyle(.tint)
                                     Text(comment.text).frame(maxWidth: .infinity, alignment: .leading)
-                                }.contentShape(Rectangle())
+                                }
+                                .padding(8)
+                                .background(PoachPalette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                                .contentShape(Rectangle())
                             }
                             if hovered == comment.id {
                                 Button { remove(comment) } label: {
@@ -182,25 +264,64 @@ struct CommentSidebar: View {
                         }
                         .accessibilityAction(named: "Delete comment") { remove(comment) }
                     }
-                }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .defaultScrollAnchor(.top)
             Divider()
             Text("Comment at \(timestamp(anchor ?? playback.time))").font(.caption.monospacedDigit())
-            TextField("Write a comment…", text: $draft)
-                .textFieldStyle(.roundedBorder).focused($composing)
-                .onSubmit(post)
-                .onChange(of: composing) {
-                    if composing && draft.isEmpty { playback.pause(); anchor = playback.time }
+            composer
+            HStack {
+                Button("Post comment", action: post)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if let onClose {
+                    Spacer()
+                    Button(action: onClose) {
+                        Image(systemName: "bubble.left.fill")
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+                    .help("Hide comments")
+                    .accessibilityLabel("Hide comments")
                 }
-                .onChange(of: draft) {
-                    if draft.isEmpty { anchor = nil }
-                    else if anchor == nil { playback.pause(); anchor = playback.time }
-                }
-            Button("Post comment", action: post)
-            .buttonStyle(.borderedProminent)
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
         .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .frame(height: min(410, heightLimit))
+        .background(PoachPalette.panel)
+    }
+
+    private var composer: some View {
+        TextField("Write a comment…", text: $draft, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(2...6)
+            .padding(8)
+            .background(PoachPalette.canvas, in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(composing ? Color.accentColor : PoachPalette.outline)
+                    .allowsHitTesting(false)
+            }
+            .focused($composing)
+            .onKeyPress(keys: [.return], phases: .down) { press in
+                guard press.modifiers.isEmpty else { return .ignored }
+                post()
+                return .handled
+            }
+            .onSubmit {
+                guard NSApp.currentEvent?.modifierFlags.contains(.shift) != true else { return }
+                post()
+            }
+            .onChange(of: composing) {
+                if composing && draft.isEmpty { playback.pause(); anchor = playback.time }
+            }
+            .onChange(of: draft) {
+                if draft.isEmpty { anchor = nil }
+                else if anchor == nil { playback.pause(); anchor = playback.time }
+            }
     }
 
     private func post() {
