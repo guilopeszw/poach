@@ -29,7 +29,8 @@ old_source="$(codex plugin marketplace list --json | node -e '
   if (entry) process.stdout.write(entry.marketplaceSource.source);
 ')"
 migrated=false
-if [[ -n "$old_source" && "$old_source" != "$market" ]]; then
+# Codex resolves aliases such as /var to /private/var. Compare directory identity.
+if [[ -n "$old_source" && ! "$old_source" -ef "$market" ]]; then
   codex plugin marketplace remove poach-local
   migrated=true
 fi
