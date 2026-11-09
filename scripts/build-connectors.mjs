@@ -15,7 +15,7 @@ const json = async (path, data) => {
   await mkdir(dirname(path),{recursive:true});
   await writeFile(path, JSON.stringify(data,null,2)+'\n');
 };
-const metadata = {name:'poach', version:'0.1.4', description:'Read the screen capture, keyframes, and timestamped notes you share from Poach.'};
+const metadata = {name:'poach', version:'1.0.0', description:'Read the screen capture, keyframes, and timestamped notes you share from Poach.'};
 try {
   await mkdir(plugin,{recursive:true});
   await build({entryPoints:[resolve(root,'packages/mcp-server/dist/index.js')],outfile:entry,bundle:true,platform:'node',format:'esm',banner:{js:"import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},target:'node20'});
