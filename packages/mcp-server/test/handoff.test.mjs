@@ -44,8 +44,8 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   await mkdir(cache, { recursive: true });
   const video = join(home, "demo.mp4");
   const png = join(home, "reference.png");
-  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=30", "-t", "2", "-c:v", "libx264", video]);
-  await exec("ffmpeg", ["-v", "error", "-i", video, "-frames:v", "1", png]);
+  await makeVideoFixture(video, [0, 128, 128], [255, 0, 0]);
+  await exec("ffmpeg", ["-v", "error", "-i", video, "-frames:v", "1", "-c:v", "png", "-f", "image2pipe", png]);
   const brief = { version: 1, briefId: "df5ff2b4-663c-41ec-8de2-5c90e837bd82", sharedAt: Date.now() / 1000, context: "[1.00s] Expand on hover. Replace #000000 with #008080.", instruction: "Recreate the interaction", evidence: { mediaType: "video", sourcePath: video, keyframes: [{ imagePath: png, kind: "start", timeMs: 0 }], annotations: [{ timeMs: 1000, text: "The heart fills on click." }], pointerTrace: { available: true, coordinateSpace: "normalized-capture-bounds", origin: "top-left", boundsWidth: 800, boundsHeight: 600, sampleIntervalMs: 1000 / 120, sampleCount: 132, insideSampleCount: 110, buttonSampleCount: 12, scrollCaptured: false, truncated: false, events: [ { timeMs: 900, kind: "down", x: 0.5, y: 0.5, button: "left", withinCapture: true }, { timeMs: 980, kind: "up", x: 0.5, y: 0.5, button: "left", withinCapture: true }, { timeMs: 1200, kind: "down", x: 0.1, y: 0.2, button: "left", withinCapture: true }, { timeMs: 1250, kind: "drag", x: 0.4, y: 0.5, button: "left", withinCapture: true }, { timeMs: 1400, kind: "up", x: 0.8, y: 0.8, button: "left", withinCapture: true } ] } } };
   brief.evidence.pointerTrace.events.push(
     { timeMs: 1500, kind: "down", x: 0.998, y: 0.5, button: "left", withinCapture: true },
@@ -63,7 +63,25 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   const shared = await client.callTool({ name: "poach_read_brief", arguments: {} });
   assert.ok(!shared.isError);
   assert.equal(shared.structuredContent.context, brief.context);
-  assert.equal(shared.content.filter(item => item.type === "image").length, 1);
+  const sharedImages = shared.content.filter(item => item.type === "image");
+  assert.equal(sharedImages.length, 4);
+  assert.ok(shared.content.some(item => item.type === "text" && item.text.startsWith("After drag release: 1999 ms")));
+  assert.notEqual(sharedImages[1].data, sharedImages.at(-1).data, "the tail frame shows the post-release color change");
+  const twoDrops = structuredClone(brief);
+  twoDrops.evidence.pointerTrace.events.unshift(
+    { timeMs: 100, kind: "down", x: 0.1, y: 0.1, button: "left", withinCapture: true },
+    { timeMs: 200, kind: "drag", x: 0.3, y: 0.3, button: "left", withinCapture: true },
+    { timeMs: 300, kind: "up", x: 0.4, y: 0.4, button: "left", withinCapture: true },
+  );
+  await writeFile(path, JSON.stringify(twoDrops));
+  const multiple = await client.callTool({ name: "poach_read_brief", arguments: { briefId: brief.briefId } });
+  const releaseEvidence = multiple.content.filter(item => item.type === "text").map(item => item.text);
+  assert.ok(!multiple.isError);
+  assert.ok(releaseEvidence.some(text => text.startsWith("Drag release candidate at 300 ms")));
+  assert.ok(releaseEvidence.some(text => text.startsWith("After drag release: 1199 ms")));
+  assert.ok(releaseEvidence.some(text => text.startsWith("Drag release candidate at 1400 ms")));
+  assert.ok(releaseEvidence.some(text => text.startsWith("After drag release: 1999 ms")));
+  await writeFile(path, JSON.stringify(brief));
   const actions = shared.structuredContent.evidence.interactionActions.actions;
   assert.deepEqual(actions.map(action => action.kind), ["click", "drag", "drag", "drag"]);
   assert.equal(shared.structuredContent.evidence.interactionActions.samplingBased, true);

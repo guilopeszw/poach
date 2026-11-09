@@ -102,10 +102,10 @@ async function readFrame(videoPath: string, seek: number, width: number): Promis
   return { timeMs: Math.round(seek * 1000), pixels: frame, width, height, channels: 3 };
 }
 
-async function referencePNG(sourcePath: string, timeMs: number, seek = timeMs / 1000): Promise<Buffer> {
+async function referencePNG(sourcePath: string, timeMs: number, seek = timeMs / 1000, maxSize = 1280): Promise<Buffer> {
   const png = await run("ffmpeg", [
     "-v", "error", ...(seek > 0 ? ["-ss", seek.toFixed(6)] : []), "-i", sourcePath,
-    "-frames:v", "1", "-vf", "scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease",
+    "-frames:v", "1", "-vf", `scale=w='min(${maxSize},iw)':h='min(${maxSize},ih)':force_original_aspect_ratio=decrease`,
     "-f", "image2pipe", "-vcodec", "png", "pipe:1",
   ]);
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
@@ -114,16 +114,37 @@ async function referencePNG(sourcePath: string, timeMs: number, seek = timeMs / 
   return png;
 }
 
-/** Read a precise visual reference from a bounded local recording. */
-export async function readVideoMoment(videoFile: string, timeMs: number): Promise<Buffer> {
-  if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("Timestamp must be a nonnegative number of milliseconds");
+async function probeMomentSource(videoFile: string) {
   const sourcePath = resolve(videoFile);
   if (![".mp4", ".mov"].includes(extname(sourcePath).toLowerCase())) throw new Error("Expected an MP4 or MOV recording");
   const info = await stat(sourcePath);
   if (!info.isFile() || info.size > MAX_VIDEO_BYTES) throw new Error("Recording must be a file no larger than 512 MiB");
   const duration = parseDuration(await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "json", sourcePath]));
-  if (timeMs >= duration * 1000) throw new Error("Timestamp must be before the end of the recording");
+  return { sourcePath, durationMs: duration * 1000 };
+}
+
+/** Read a precise visual reference from a bounded local recording. */
+export async function readVideoMoment(videoFile: string, timeMs: number): Promise<Buffer> {
+  if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("Timestamp must be a nonnegative number of milliseconds");
+  const { sourcePath, durationMs } = await probeMomentSource(videoFile);
+  if (timeMs >= durationMs) throw new Error("Timestamp must be before the end of the recording");
   return referencePNG(sourcePath, timeMs, seekForMoment(await presentationTimes(sourcePath), timeMs / 1000));
+}
+
+/** Read a short sequence around a release, ending before the next recorded drag. */
+export async function readDragReleaseFrames(videoFile: string, releaseTimeMs: number, nextDragTimeMs?: number) {
+  const { sourcePath, durationMs } = await probeMomentSource(videoFile);
+  const frames: Array<{ timeMs: number; png: Buffer }> = [];
+  const endTimeMs = Math.min(30_000, Math.ceil(durationMs) - 1, (nextDragTimeMs ?? Infinity) - 1);
+  if (releaseTimeMs > endTimeMs) return { endTimeMs, frames };
+  const times = await presentationTimes(sourcePath);
+  const offsets = [-80, 150, 800, 2_000, 4_000];
+  const sampleTimes = new Set(offsets.map((offset) => Math.max(0, Math.min(releaseTimeMs + offset, endTimeMs))));
+  sampleTimes.add(endTimeMs);
+  for (const timeMs of sampleTimes) {
+    frames.push({ timeMs, png: await referencePNG(sourcePath, timeMs, seekForMoment(times, timeMs / 1000), 768) });
+  }
+  return { endTimeMs, frames };
 }
 
 function chooseKeyframes(frames: readonly FrameSample[], deltas: readonly number[]): readonly { kind: Keyframe["kind"]; index: number }[] {
