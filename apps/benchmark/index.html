@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Dropzone · Poach benchmark</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=drop-feedback">
 </head>
 <body>
   <main>
@@ -15,17 +15,18 @@
           <strong id="hint">Drag a file here</strong><span class="muted">Up to 5 MB</span>
         </div>
         <div class="result" hidden>
-          <span class="mini" id="kind"></span>
+          <span class="sheet result-sheet" aria-hidden="true"><svg viewBox="0 0 42 52"><path d="M5 1h20l15 15v31a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Zm20 0v11a4 4 0 0 0 4 4h11"/></svg><b>PNG</b></span>
           <div class="details"><strong id="name"></strong><small id="status"></small><progress id="progress" max="100" value="0" aria-label="Demo upload progress"></progress></div>
+          <span class="uploaded" id="uploaded" aria-hidden="true" hidden><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span>
         </div>
       </div>
       <div class="samples">
         <button class="file" data-kind="PNG" data-name="mood.png" data-size="2.4" aria-label="Drag mood.png, or press Enter to try the drop"><span class="sheet"><svg viewBox="0 0 42 52"><path d="M5 1h20l15 15v31a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Zm20 0v11a4 4 0 0 0 4 4h11"/></svg><b>PNG</b></span><span>mood.png</span></button>
-        <button class="file" data-kind="MP4" data-name="demo.mp4" data-size="8.1" aria-label="Drag demo.mp4, or press Enter to try the drop"><span class="sheet"><svg viewBox="0 0 42 52"><path d="M5 1h20l15 15v31a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Zm20 0v11a4 4 0 0 0 4 4h11"/></svg><b>MP4</b></span><span>demo.mp4</span></button>
+        <button class="file" data-kind="MP4" data-name="demo.mp4" data-size="12.6" aria-label="Drag demo.mp4, or press Enter to try the drop"><span class="sheet"><svg viewBox="0 0 42 52"><path d="M5 1h20l15 15v31a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4Zm20 0v11a4 4 0 0 0 4 4h11"/></svg><b>MP4</b></span><span>demo.mp4</span></button>
       </div>
       <footer><a href="context-meter.html">Context meter →</a><a href="https://bencho.dev/blocks/upload-dropzone?c=upload-dropzone&amp;theme=dark" target="_blank" rel="noreferrer">Bencho reference ↗</a><button id="reset">↺ Replay</button></footer>
       <p class="sr" aria-live="polite" id="announcement"></p>
     </section>
   </main>
-  <script src="benchmark.js"></script>
+  <script src="benchmark.js?v=drop-feedback"></script>
 </body></html>

@@ -6,6 +6,8 @@ section{width:min(375px,100%);position:relative}
 #zone{height:220px;background:#252525;border-radius:24px;display:grid;place-items:center;transition:height .32s cubic-bezier(.2,.8,.2,1),background .16s,transform .2s}
 #zone.over{background:#303030;transform:scale(1.015)}
 #zone.compact{height:83px}
+#zone.rejected{animation:refuse .34s ease-out}
+#zone.rejected #hint{color:#f15c68}
 .prompt{display:grid;justify-items:center;gap:6px}
 .upload{display:grid;place-items:center;background:#333;border-radius:12px;width:48px;height:48px;margin-bottom:9px;transition:transform .2s}
 .over .upload{transform:translateY(-4px)}
@@ -20,15 +22,21 @@ button{border:0;background:none;cursor:pointer}
 .file.dragging{cursor:grabbing;z-index:2;position:relative}
 .sheet{display:block;height:51px;width:41px;position:relative;color:#686868}
 .sheet svg{width:100%;height:100%;stroke-width:1.9}
-.sheet b,.mini{background:#008e52;color:white;border-radius:12px;padding:2px 7px;font-size:12px;font-weight:600}
+.sheet b{background:#008e52;color:white;border-radius:12px;padding:2px 7px;font-size:12px;font-weight:600}
 .sheet b{position:absolute;left:-8px;bottom:8px}
-[data-kind=MP4] b,.mini.blue{background:#1959f5}
+[data-kind=MP4] b{background:#1959f5}
 .result{width:100%;display:flex;align-items:center;gap:16px;padding:17px 20px;animation:appear .2s ease-out}
-.details{flex:1;display:grid;gap:2px}.details strong{font-size:14px}small{font-size:12px}progress{width:100%;height:4px;margin-top:5px;accent-color:#7185ff}
+.result-sheet{height:42px;width:34px}
+.result-sheet b{left:-5px;bottom:6px;padding:2px 5px;font-size:10px}
+.details{flex:1;display:grid;gap:2px}.details strong{font-size:14px}small{font-size:12px}progress{width:100%;height:4px;margin-top:5px;accent-color:#394dff}
+.uploaded{width:28px;height:28px;flex:none;border-radius:50%;background:#2dcc79;color:#fff;display:grid;place-items:center;animation:uploaded .3s cubic-bezier(.25,.8,.4,1.4) both}
+.uploaded svg{width:16px;stroke-width:2}
 [hidden]{display:none!important}
 footer{display:flex;justify-content:space-between;align-items:center;position:absolute;top:calc(100% + 42px);width:100%;font-size:12px;color:#aaa}
 footer a{text-decoration:none}footer :is(a,button):hover{color:white}
 :focus-visible{outline:2px solid #91b4ff;outline-offset:5px;border-radius:4px}
 .sr{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
 @keyframes appear{from{opacity:0;transform:translateY(5px)}}
+@keyframes uploaded{from{opacity:0;transform:scale(.55)}}
+@keyframes refuse{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}

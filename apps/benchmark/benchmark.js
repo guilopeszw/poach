@@ -4,14 +4,17 @@ const prompt = zone.querySelector(".prompt");
 const result = zone.querySelector(".result");
 const files = [...document.querySelectorAll(".file")];
 let timer;
+let feedbackTimer;
 let active;
 
 function reset() {
   clearInterval(timer);
+  clearTimeout(feedbackTimer);
   if (active) endDrag();
   zone.className = "";
   prompt.hidden = false;
   result.hidden = true;
+  get("uploaded").hidden = true;
   files.forEach(file => file.style.visibility = "");
   get("hint").textContent = "Drag a file here";
   get("announcement").textContent = "";
@@ -19,28 +22,31 @@ function reset() {
 
 function showFile(file) {
   reset();
-  const {kind, name, size} = file.dataset;
+  const {name, size} = file.dataset;
+  if (Number(size) > 5) {
+    zone.classList.add("rejected");
+    get("hint").textContent = "Too big — up to 5 MB";
+    get("announcement").textContent = name + " exceeds the file limit.";
+    feedbackTimer = setTimeout(reset, 1250);
+    return;
+  }
   file.style.visibility = "hidden";
   zone.classList.add("compact");
   prompt.hidden = true;
   result.hidden = false;
   get("name").textContent = name;
-  get("kind").textContent = kind;
-  get("kind").classList.toggle("blue", kind === "MP4");
-  const rejected = Number(size) > 5;
   const progress = get("progress");
-  progress.hidden = rejected;
   progress.value = 0;
-  get("status").textContent = rejected ? size + " MB · Exceeds 5 MB limit" : size + " MB · 0%";
-  get("announcement").textContent = rejected ? name + " exceeds the file limit." : "Demo upload started.";
-  if (rejected) return;
+  get("status").textContent = size + " MB · 0%";
+  get("announcement").textContent = "Demo upload started.";
   const start = performance.now();
   timer = setInterval(() => {
     const percent = Math.min(100, Math.floor((performance.now() - start) / 35));
     progress.value = percent;
-    get("status").textContent = size + " MB · " + (percent === 100 ? "Complete" : percent + "%");
+    get("status").textContent = size + " MB · " + (percent === 100 ? "Uploaded" : percent + "%");
     if (percent === 100) {
       clearInterval(timer);
+      get("uploaded").hidden = false;
       get("announcement").textContent = "Demo upload complete.";
     }
   }, 35);
@@ -64,6 +70,7 @@ function endDrag() {
 for (const file of files) {
   file.addEventListener("pointerdown", event => {
     if (event.button !== 0 || active || event.isPrimary === false) return;
+    if (zone.classList.contains("rejected")) reset();
     active = {file, x:event.clientX, y:event.clientY, pointer:event.pointerId};
     file.setPointerCapture(event.pointerId);
     file.classList.add("dragging");
