@@ -8,17 +8,19 @@ The optional capture timer and Poach-owned capture selection are implemented and
 
 ## What this branch does
 
-- **Optional timer** for recordings and screenshots: Off (default), 3s, 10s. Camera-style ⏱ control in the selection panel (⏱ · ● · ✕, or ⏱ · 📷 · ✕ for screenshots). The last choice is stored in `UserDefaults` (`captureTimerSeconds`).
+- **Floating capture pill** (`Views/CapturePill.swift`) with only ⏱ · ● · ✕ (📷 for screenshots). ⏱ expands Off · 3s · 10s over the whole pill. The same pill stays through the countdown (only ✕ active) and the recording (only stop active; the edge fills over 30 s), replacing the old "Recording screen" panel and the countdown ✕.
+- **Optional timer** for recordings and screenshots: Off (default), 3s, 10s. The last choice is stored in `UserDefaults` (`captureTimerSeconds`).
 - **Poach-owned selection** for all three modes (`Capture/CaptureSelection.swift`). Apple's `SCContentSharingPicker` is gone: macOS hides other apps' windows while it is open, so no timer control could be shown there. Window mode highlights the window under the pointer; click or Tab chooses.
-- **Click-through countdown** (`Capture/CaptureCountdown.swift`): only an outline and the number are shown, and clicks reach other apps. Esc is registered globally only while the countdown runs; ✕ and ⌘⇧P also cancel.
-- **Space** starts from the selection panel and stops a recording only while Poach's recording panel is focused (no global Space shortcut).
+- **Click-through countdown** (`Capture/CaptureCountdown.swift`): only an outline and the number are shown, and clicks reach other apps. Esc is registered globally only while the countdown runs; the pill's ✕ and ⌘⇧P also cancel.
+- Window selection reloads the window list when the active desk changes.
+- **Space** starts from the pill and stops a recording only while the pill is focused (no global Space shortcut).
 - `@preconcurrency import ScreenCaptureKit` fixes Swift 6.1 strict-concurrency build errors that also affect `main`.
 
 Design: `docs/superpowers/specs/2026-11-09-optional-capture-timer-design.md`. Plan: `docs/superpowers/plans/2026-11-09-optional-capture-timer.md`.
 
 ## Next steps
 
-1. Manual pass on the built app (see the plan's Task 5, Step 4 and Review Focus).
+1. Manual pass on the built app (see the plan's Task 5, Step 4 and Review Focus), including the new pill UI.
 2. Final whole-branch review, then open a PR.
 
 ## Open questions and decisions
