@@ -162,15 +162,23 @@ To capture the upload and rejection in one handoff:
 4. Check that the Poach editor shows **Chrome evidence included** with the site. Copy the handoff and use `poach_read_brief` in your connected assistant to see the video and the browser observations.
 5. To start another browser capture on the same tab, choose **Choose another component**. If you edit the extension source, use **Reload** on its card at `chrome://extensions` and refresh the test page.
 
+To capture typography, select the text element in Chrome, take a screenshot of it in Poach while the Chrome session is running, then choose **Finish and send** in the extension. Open **Typography** below Palette in the editor to see the selected element’s CSS values, and the handoff includes the computed CSS font stack, size, weight, style, line height, and letter spacing. The font stack lists CSS preferences and fallbacks. The companion collects CSS values and does not download font files.
+
 Poach uses temporary access to the tab when you invoke the extension. It collects a bounded set of visible text, styles, browser events, and available animation data for the selected component and its descendants, plus pointer releases over its bounds. Capture runs for up to 90 seconds. The extension sends snapshots to the paired app over loopback. Poach keeps recent evidence in memory. Sharing saves included evidence with the local handoff, and bookmarking stores it with the favorite. Exporting that favorite includes the browser evidence in the `.poach` file. Input values, typed keys, and file contents are excluded.
 
-Browser `atMs` values are relative to the start of the browser session. For overlapping native recordings, add `videoOffsetMs` to estimate the position in the video. Poach includes Chrome evidence when it overlaps a native recording in time. When an offset is available, `poach_read_moment` includes nearby browser observations. Compare those observations with the video to assess what changed.
+Browser `atMs` values are relative to the start of the browser session. For overlapping native recordings, add `videoOffsetMs` to estimate the position in the video. Poach includes Chrome evidence when it overlaps a native capture in time. When an offset is available, `poach_read_moment` includes nearby browser observations. Compare those observations with the video to assess what changed.
 
 ## Package and verify a release (authorized maintainers)
 
 Run `bash scripts/package-beta.sh` to produce the app archive, Codex installer, Claude extension, FFmpeg source archive, build recipe, and `SHA256SUMS.txt` in `outputs/beta/`. Verify the packaged files with `cd outputs/beta && shasum -a 256 -c SHA256SUMS.txt`. Run `open outputs/Poach.app` to launch the local build. The capture shortcut is Command–Shift–P. For an installer upgrade check, register a copy of the old local marketplace in a temporary Codex home. Run the packaged installer twice and verify that Poach is enabled and points to the installed marketplace.
 
 Only maintainers authorized by the repository owner may publish a release. Prepare release assets in a draft, verify them, then publish. Future releases are immutable once published. Use a new version for corrections. All tags require repository administrator access to create, update, or delete. The personal repository owner currently holds the only administrator account. GitHub also allows users with write access to manage releases, including releases for existing tags. Grant repository write access only to people explicitly authorized to publish. Keep workflow permissions read-only and review any credentials or GitHub App installation that requests contents write access.
+
+### Smoke-test screenshot font matching
+
+Run `bash scripts/test-font-matcher.sh` on macOS to check text detection, crop coordinates, and matching known faces with light and dark backgrounds.
+
+Import a screenshot containing one line in a known installed font. Open **Snatch font** below Palette, drag over the line, and confirm that the source crop appears alongside editable previews. Try light text on a dark background and dark text on a light background. Verify **Snatch font** stays hidden for videos and still images with no readable text. Blank or multiline selections in an image with text should show a retry message. Select a suggestion and check that `poach_read_brief` includes `visualFontMatch` with the chosen family, face, PostScript name, and normalized crop coordinates measured from the top-left. Verify that a favorite retains the choice and that removing a match omits it from a fresh share. Matching and preview text stay on the Mac. Only the chosen font metadata and crop coordinates are added to the existing handoff or favorite.
 
 ### Smoke-test screenshot capture
 
