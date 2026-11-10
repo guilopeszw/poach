@@ -1,7 +1,22 @@
+import AppKit
 import SwiftUI
 
 /// The two lobes leave a transparent cinch at menu-bar scale.
 struct PoachPouchShape: Shape {
+    @MainActor
+    static let menuBarIcon: NSImage = {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.setFillColor(NSColor.black.cgColor)
+            context.addPath(PoachPouchShape().path(in: rect).cgPath)
+            context.fillPath()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Poach"
+        return image
+    }()
+
     func path(in rect: CGRect) -> Path {
         var path = Path()
         path.move(to: CGPoint(x: 6.3, y: 6.4))

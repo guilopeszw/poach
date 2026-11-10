@@ -57,6 +57,8 @@ struct PoachDesignLab: View {
     @State private var dataset = Dataset(rawValue: UserDefaults.standard.string(forKey: "poachDesignDataset") ?? "") ?? .demo
     @State private var width = Int(UserDefaults.standard.string(forKey: "poachDesignWidth") ?? "") ?? 800
     private let heightLimit = UserDefaults.standard.string(forKey: "poachDesignHeight").flatMap(Int.init)
+    @State private var captureType = PoachCaptureType.record
+    @State private var homeTab = PoachHomeView.Tab.capture
     @State private var mode = PoachCaptureMode.selectedPortion
     @StateObject private var status = InspectionStatus()
 
@@ -94,6 +96,7 @@ struct PoachDesignLab: View {
         case .capture:
             PoachHomeView(icon: NSApp.applicationIconImage, isWorking: dataset == .worst,
                           isRecording: false, elapsedSeconds: 0, captureMode: $mode,
+                          captureType: $captureType, tab: $homeTab,
                           onStartRecording: {}, onStopRecording: {}, onLoadMedia: {}, onDropMedia: { _ in },
                           loadingFile: dataset == .worst ? videoURL : nil, layoutWidth: width == 320 ? 320 : nil,
                           status: status)

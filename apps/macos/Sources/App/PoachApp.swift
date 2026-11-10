@@ -9,12 +9,13 @@ import ScreenCaptureKit
 struct PoachApp: App {
     private static let captureLog = Logger(subsystem: "dev.poach.app", category: "CaptureLifecycle")
     @State private var captureHotKey = PoachHotKey()
-    @State private var hotKeyAvailable = true
     @NSApplicationDelegateAdaptor(PoachAppDelegate.self) private var appDelegate
     private var hudWindow: FloatingHUDWindowController { appDelegate.editor }
     @State private var recordingWindow = RecordingStatusWindowController()
     @State private var captureServiceStorage: AnyObject?
     @State private var captureMode = PoachCaptureMode(rawValue: UserDefaults.standard.string(forKey: "defaultCaptureMode") ?? "") ?? .selectedPortion
+    @State private var captureType = PoachCaptureType.record
+    @State private var homeTab = PoachHomeView.Tab.capture
     @AppStorage("defaultCaptureMode") private var defaultMode = PoachCaptureMode.selectedPortion.rawValue
     @AppStorage("hasShownOnboarding") private var hasShownOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     @State private var shouldShowOnboarding = !UserDefaults.standard.bool(forKey: "hasShownOnboarding")
@@ -39,38 +40,21 @@ struct PoachApp: App {
         .windowStyle(.hiddenTitleBar)
 
         MenuBarExtra {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Poach", systemImage: "record.circle")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                Button(isRecording ? "Stop and inspect" : "Start recording") {
-                    if isRecording { Task { await stopRecording() } }
-                    else { startRecording() }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isWorking)
-
-                Text(hotKeyAvailable ? "⌘⇧P — Select area or stop recording" : "⌘⇧P is unavailable. Use the recording button.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Button("Take screenshot", action: takeScreenshot)
-                    .buttonStyle(.plain)
-                    .disabled(isWorking || isRecording)
-
-                Button("Load video or image…", action: loadMedia)
-                    .buttonStyle(.plain)
-                    .disabled(isWorking || isRecording)
-            }
-            .padding(16)
-            .frame(width: 240)
-            .preferredColorScheme(.light)
+            PoachStatusMenu(
+                editor: hudWindow,
+                isWorking: isWorking,
+                isRecording: isRecording,
+                onSelectCaptureType: { type in
+                    captureType = type
+                    homeTab = .capture
+                },
+                onStopRecording: { Task { await stopRecording() } }
+            )
         } label: {
-            PoachPouchShape()
-                .fill(.primary)
-                .frame(width: 18, height: 18)
+            Image(nsImage: PoachPouchShape.menuBarIcon)
                 .accessibilityLabel("Poach")
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
     }
 
     @ViewBuilder
@@ -96,6 +80,8 @@ struct PoachApp: App {
                     isRecording: isRecording,
                     elapsedSeconds: elapsedSeconds,
                     captureMode: $captureMode,
+                    captureType: $captureType,
+                    tab: $homeTab,
                     onStartRecording: startRecording,
                     onScreenshot: takeScreenshot,
                     onCancelSelection: cancelSelectionAction,
@@ -107,7 +93,7 @@ struct PoachApp: App {
                 .background(HomeWindowAnchor(onAttach: pendingOnboardingAnimation))
                 .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
                 .onAppear {
-                    hotKeyAvailable = captureHotKey.register {
+                    _ = captureHotKey.register {
                         if isRecording { Task { await stopRecording() } }
                         else if !isWorking {
                             captureMode = .selectedPortion
@@ -478,6 +464,53 @@ private final class RecordingStatusWindowController {
     }
 }
 
+private struct PoachStatusMenu: View {
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject var editor: FloatingHUDWindowController
+    let isWorking: Bool
+    let isRecording: Bool
+    let onSelectCaptureType: (PoachCaptureType) -> Void
+    let onStopRecording: () -> Void
+
+    var body: some View {
+        Button("Open Poach", action: showPoach)
+            .disabled(isRecording)
+
+        Divider()
+
+        Button("New Screenshot") { prepareCapture(.screenshot) }
+            .disabled(captureUnavailable)
+        Button("New Recording") { prepareCapture(.record) }
+            .disabled(captureUnavailable)
+        if isRecording {
+            Button("Stop Recording", action: onStopRecording)
+        }
+
+        Divider()
+
+        Button("Quit Poach") { NSApp.terminate(nil) }
+            .disabled(isWorking || isRecording)
+    }
+
+    private var captureUnavailable: Bool {
+        isWorking || isRecording || editor.hasOpenEditor
+    }
+
+    private func showPoach() {
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if !editor.revealEditor() {
+            openWindow(id: "main")
+        }
+    }
+
+    private func prepareCapture(_ type: PoachCaptureType) {
+        guard !captureUnavailable else { return }
+        onSelectCaptureType(type)
+        showPoach()
+    }
+}
+
 @MainActor
 private final class PoachAppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published private(set) var icon: NSImage = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
@@ -513,6 +546,8 @@ private final class PoachAppDelegate: NSObject, NSApplicationDelegate, Observabl
 
     let editor = FloatingHUDWindowController()
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         !editor.revealEditor()
     }
@@ -523,8 +558,9 @@ private final class PoachAppDelegate: NSObject, NSApplicationDelegate, Observabl
 }
 
 @MainActor
-private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
-    private var panel: NSPanel?
+private final class FloatingHUDWindowController: NSObject, NSWindowDelegate, ObservableObject {
+    @Published private var panel: NSPanel?
+    var hasOpenEditor: Bool { panel != nil }
 
     let preparation = InspectionStatus()
     private var returningToCapture = false

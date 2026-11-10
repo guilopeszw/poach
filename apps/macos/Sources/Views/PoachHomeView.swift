@@ -1,15 +1,17 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct PoachHomeView: View {
-    private enum CaptureType: String, CaseIterable {
-        case record = "Record"
-        case screenshot = "Screenshot"
+enum PoachCaptureType: String, CaseIterable {
+    case record = "Record"
+    case screenshot = "Screenshot"
 
-        var symbol: String {
-            self == .record ? "record.circle" : "camera"
-        }
+    var symbol: String {
+        self == .record ? "record.circle" : "camera"
     }
+}
+
+struct PoachHomeView: View {
+    enum Tab: Int { case capture, favorites, settings }
 
     let icon: NSImage
     let isWorking: Bool
@@ -17,6 +19,8 @@ struct PoachHomeView: View {
     let isRecording: Bool
     let elapsedSeconds: Int
     @Binding var captureMode: PoachCaptureMode
+    @Binding var captureType: PoachCaptureType
+    @Binding var tab: Tab
     let onStartRecording: () -> Void
     var onScreenshot: () -> Void = {}
     var onCancelSelection: (() -> Void)?
@@ -34,10 +38,7 @@ struct PoachHomeView: View {
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private enum Tab: Int { case capture, favorites, settings }
-    @State private var tab = Tab.capture
     @State private var tabSlideOffset: CGFloat = 0
-    @State private var captureType = CaptureType.record
 
     private var primaryTitle: String {
         if onCancelSelection != nil { return "Cancel selection" }
@@ -81,7 +82,7 @@ struct PoachHomeView: View {
 
     private var tabTransition: AnyTransition {
         guard !reduceMotion else { return .identity }
-        return .asymmetric(insertion: .offset(x: tabSlideOffset).combined(with: .opacity), removal: .opacity)
+        return .asymmetric(insertion: .offset(x: tab == .capture ? -24 : tabSlideOffset).combined(with: .opacity), removal: .opacity)
     }
 
     @ViewBuilder
@@ -109,7 +110,7 @@ struct PoachHomeView: View {
                 .font(.system(size: 19, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
             PoachSegments(label: "Capture type", selection: $captureType,
-                          choices: CaptureType.allCases.map { ($0, $0.rawValue) },
+                          choices: PoachCaptureType.allCases.map { ($0, $0.rawValue) },
                           symbol: { $0.symbol })
                 .frame(width: 210)
                 .disabled(isWorking || isRecording)
