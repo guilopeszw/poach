@@ -61,7 +61,7 @@ struct FloatingHUDView: View {
     @AppStorage("handoffAssistant") private var handoffAssistant = PoachAssistant.codex
     @State private var connected = false
     @State private var showingAssistantSetup = false
-    @State private var shareStatus = ""
+    @State private var handoffError = ""
     @State private var copyFeedback: UUID?
     @State private var context = ""
     @State private var colorOverrides: [String: Color] = [:]
@@ -99,7 +99,7 @@ struct FloatingHUDView: View {
                         VStack(alignment: .leading, spacing: 5) {
                             ColorPicker("Replace \(token.hex)", selection: Binding(
                                 get: { colorOverrides[token.hex] ?? token.color },
-                                set: { colorOverrides[token.hex] = $0; shareStatus = "" }
+                                set: { colorOverrides[token.hex] = $0 }
                             ), supportsOpacity: false)
                             .labelsHidden()
                             Text(hex(colorOverrides[token.hex] ?? token.color))
@@ -143,7 +143,6 @@ struct FloatingHUDView: View {
                             .allowsHitTesting(false)
                     }
                     .accessibilityLabel("Change notes (optional)")
-                    .onChange(of: context) { shareStatus = "" }
             }
 
             if captureEpochRange != nil { browserEvidenceControl }
@@ -159,9 +158,6 @@ struct FloatingHUDView: View {
             }
             if !favoriteError.isEmpty {
                 Text(favoriteError).font(.caption).foregroundStyle(PoachPalette.errorText)
-            }
-            if !shareStatus.isEmpty {
-                Text(shareStatus).font(.caption).foregroundStyle(.secondary)
             }
             }
         }
@@ -252,7 +248,14 @@ struct FloatingHUDView: View {
         } message: {
             Text("Keep this handoff and its reference frames for later.")
         }
-        .onChange(of: comments) { shareStatus = "" }
+        .alert("Handoff issue", isPresented: Binding(
+            get: { !handoffError.isEmpty },
+            set: { if !$0 { handoffError = "" } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(handoffError)
+        }
         .task(id: sourceURL) {
             guard !isVideo else { return }
             let url = sourceURL
@@ -355,7 +358,6 @@ struct FloatingHUDView: View {
         connected = Self.hasLiveConnector()
         #endif
         guard connected else { return }
-        shareStatus = ""
         do {
             let id = try onShareContext(implementationContext, annotations, browserEvidence, fontMatch)
             let lookup = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches."
@@ -372,20 +374,18 @@ struct FloatingHUDView: View {
                 prompt = "\(lookup) Recreate the visible UI using the screenshot, palette, and change notes. \(visualMatchGuidance)\(browserGuidance)Ask about behavior that the screenshot does not show."
             }
             guard PoachHandoff.copyToClipboard(prompt) else {
-                shareStatus = "Clipboard unavailable. Try sharing again."
+                handoffError = "Could not copy to the clipboard. Try again."
                 return
             }
+            copyFeedback = UUID()
             if let assistant {
                 handoffAssistant = assistant
-                copyFeedback = nil
-                shareStatus = assistant.openApp()
-                    ? "Prompt copied. Paste it into your chat."
-                    : "Prompt copied. Open \(assistant.name) to paste it into your chat."
-            } else {
-                copyFeedback = UUID()
+                if !assistant.openApp() {
+                    handoffError = "Could not open \(assistant.name)."
+                }
             }
         } catch {
-            shareStatus = "Could not share: \(error.localizedDescription)"
+            handoffError = "Could not share: \(error.localizedDescription)"
         }
     }
 
@@ -457,7 +457,6 @@ struct FloatingHUDView: View {
             HStack(spacing: 6) {
                 Button("Include Chrome evidence") {
                     browserEvidence = candidate
-                    shareStatus = ""
                 }
                 .buttonStyle(.link)
                 .accessibilityHint("Includes browser observations if they match this screenshot")
@@ -582,7 +581,6 @@ struct FloatingHUDView: View {
                         Button("Remove match", systemImage: "xmark.circle") {
                             fontMatch = nil
                             fontResult = nil
-                            shareStatus = ""
                         }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.borderless)
@@ -611,7 +609,6 @@ struct FloatingHUDView: View {
                         Spacer()
                         Button(fontMatch == match ? "Selected" : "Use this match") {
                             fontMatch = match
-                            shareStatus = ""
                             showingFontMatches = false
                         }
                         .disabled(fontMatch == match)
