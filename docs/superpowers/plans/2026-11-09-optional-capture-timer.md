@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the pre-capture countdown optional (Off · 3s · 10s, default Off). Replace Apple's content-sharing picker with Poach-owned selection for Full screen and App window, so the timer lives in one panel for all three modes.
+**Goal:** Make the pre-capture countdown optional (Off · 3s · 10s, default Off) for recordings and screenshots. Replace Apple's content-sharing picker with Poach-owned selection for Full screen and App window, so the timer lives in one panel for all three modes.
 
 **Architecture:** Pure, Foundation-only logic (the timer model, window hit-testing, Tab cycling, coordinate conversion) lives in small files that are tested with `swiftc` precondition tests, following `scripts/test-pointer-trace-buffer.sh`. One AppKit selection controller returns a `CaptureTarget` for any mode. A separate click-through countdown controller runs after selection, with a temporary global Esc hotkey. `ScreenCaptureService` turns the target into an `SCContentFilter` and no longer touches `SCContentSharingPicker`.
 
@@ -13,10 +13,11 @@
 ## Global Constraints
 
 - Timer values: exactly Off (0), 3s (3), 10s (10). Default Off. `UserDefaults` key `captureTimerSeconds`. Any other stored value reads as Off.
-- Panel button order: ⏱ · ● · ✕. The expanded timer options temporarily replace ● and ✕.
+- Panel button order: ⏱ · ● · ✕ for recordings, ⏱ · 📷 · ✕ for screenshots (existing camera button). The expanded timer options temporarily replace ● and ✕.
 - Timer accessibility: label "Timer", value "Off" / "3 seconds" / "10 seconds".
 - Capture requires macOS 15 (unchanged). The package still targets macOS 14, and file import must keep working there.
 - No new permissions, no network, no retention (`AGENTS.md`). Poach's own windows are never capture targets and stay excluded from display captures.
+- The countdown overlay is closed before the screenshot or first frame is captured.
 - Esc is registered as a global hotkey **only** while a countdown runs, and is unregistered on completion, cancel, or error.
 - Space has no global registration. It starts from the selection panel, and stops only while Poach's recording panel is key.
 - UI copy stays in English.
@@ -160,17 +161,17 @@ print("Capture target geometry passed.")
 
 **Files:**
 - Create: `apps/macos/Sources/Capture/CaptureSelection.swift`
-- Modify: `apps/macos/Sources/Capture/ScreenCaptureService.swift`. Move `RegionSelectionWindowController`, `RegionSelectionPanel`, `RegionSelectionView` and `SelectedRegion` out of it into the new file. `SelectedRegion` becomes internal (it is `private` today).
+- Modify: `apps/macos/Sources/Capture/ScreenCaptureService.swift`. Move `RegionSelectionWindowController`, `RegionSelectionPanel`, `RegionSelectionView`, `TransparentHostingView` and `SelectedRegion` out of it into the new file. `SelectedRegion` becomes internal (it is `private` today). Keep what PR #5 added to the area view: the `screenshot` flag (camera button and copy), clamping the drag to the screen, and `TransparentHostingView`.
 
 **Interfaces:**
 - Consumes: `PoachCaptureTimerControl`, `PoachCaptureTimer.current`, `CaptureTargetGeometry` and `CaptureWindowCandidate` (Task 2).
 - Produces:
   - `struct SelectedRegion { let displayID: CGDirectDisplayID; let rect: CGRect }`. `rect` is screen-local with a top-left origin, as today.
   - `enum CaptureTarget { case area(SelectedRegion); case display(CGDirectDisplayID); case window(CaptureWindowCandidate) }`
-  - `@MainActor final class CaptureSelectionWindowController { static let shared; func select(mode: PoachCaptureMode) async throws -> CaptureTarget }`. Throws `.selectionCancelled` or `.noDisplay`. It no longer runs a countdown: `beginCountdown`, `countdownValue` and `countdownTask` are removed from the view.
+  - `@MainActor final class CaptureSelectionWindowController { static let shared; func select(mode: PoachCaptureMode, screenshot: Bool) async throws -> CaptureTarget }`. Throws `.selectionCancelled` or `.noDisplay`. It no longer runs a countdown: `confirmSelection`'s countdown branch, `countdownValue` and `countdownTask` are removed from the view.
 
 - [ ] **Step 1: Generalize the overlay.** Keep one `.screenSaver` panel per screen, as `RegionSelectionWindowController` does today, and render a mode-specific view.
-  - **Shared bottom panel:** the existing white rounded panel, with ⏱ · ● · ✕ (● and ✕ hidden while the timer is expanded). ● is disabled until there is a target. Return, Space and ● all start; Space works through a zero-opacity, `accessibilityHidden` button with `.keyboardShortcut(.space, modifiers: [])`. ✕ and Esc cancel, but Esc collapses the timer first when it is expanded (the logic that already exists).
+  - **Shared bottom panel:** the existing white rounded panel, with ⏱ · ● · ✕ (⏱ · 📷 · ✕ when `screenshot`) (● and ✕ hidden while the timer is expanded). ● is disabled until there is a target. Return, Space and ● all start; Space works through a zero-opacity, `accessibilityHidden` button with `.keyboardShortcut(.space, modifiers: [])`. ✕ and Esc cancel, but Esc collapses the timer first when it is expanded (the logic that already exists).
   - ● help text: "Start recording (Return)" when Off, otherwise "Start the \(timer.spokenTitle) countdown (Return)" (already in the current area view; keep it).
   - **Area:** the current drag behaviour. Copy: "Drag to select an area" / "Ready to record".
   - **Display:** the screen under the pointer is the target. It is undimmed with a white 2-pt border; the other screens stay dimmed at 0.48. Tab and Shift-Tab cycle the screens with `cycledIndex`. Copy: "Record this screen". VoiceOver value: `NSScreen.localizedName`.
@@ -179,7 +180,7 @@ print("Capture target geometry passed.")
     - A click locks the target until another window is clicked.
     - Tab and Shift-Tab cycle through `selectable` (front to back).
     - Copy: "Click a window to record" before there is a target, then the target's `spokenName`, truncated to one line.
-- [ ] **Step 2: Point Screen area at the new API** in `ScreenCaptureService.startRecording`: `case .area(let region) = try await CaptureSelectionWindowController.shared.select(mode: .selectedPortion)`. Full screen and App window keep their current picker code until Task 5.
+- [ ] **Step 2: Point Screen area at the new API** in `ScreenCaptureService.selectTarget(mode:screenshot:)`: `case .area(let region) = try await CaptureSelectionWindowController.shared.select(mode: .selectedPortion, screenshot: screenshot)`. Full screen and App window keep their current picker code until Task 5.
 - [ ] **Step 3: Run `swift build --package-path apps/macos` and `bash scripts/test-capture-selection.sh`.** Expected: both pass.
 - [ ] **Step 4: Manual check** with `apps/macos/.build/debug/Poach`, in Screen area (until Task 5 lands, area captures run without any countdown): the panel shows ⏱ · ● · ✕, Space starts, Esc collapses the timer and then cancels, and with Off the capture starts immediately.
 - [ ] **Step 5: Commit:** `feat(macos): add poach-owned capture target selection`.
@@ -192,9 +193,9 @@ print("Capture target geometry passed.")
 
 **Interfaces:**
 - Consumes: `CaptureSelectionWindowController.select(mode:)`, `CaptureCountdownController.shared`, `CaptureTargetGeometry.appKitRect`.
-- Produces: `func startRecording(mode: PoachCaptureMode) async throws`. The `beforeCapture` parameter is removed.
+- Produces: `func startRecording(mode: PoachCaptureMode) async throws` (the `beforeCapture` parameter is removed) and `func captureScreenshot(mode: PoachCaptureMode) async throws -> URL` (signature unchanged). Both go through `selectTarget(mode:screenshot:)`, which now selects, runs the countdown, then builds the filter.
 
-- [ ] **Step 1: Rewrite `startRecording(mode:)`.**
+- [ ] **Step 1: Rewrite `selectTarget(mode:screenshot:)`** (used by both `startRecording` and `captureScreenshot`).
   1. Select the target.
   2. Compute its outline and screen:
      - area: the conversion now inlined in `pointerCaptureBounds`;
@@ -206,10 +207,10 @@ print("Capture target geometry passed.")
      - window: find the `SCWindow` whose `windowID` matches. If there is none, throw `ScreenCaptureError.selectionFailed("That window is no longer available.")`; otherwise use `SCContentFilter(desktopIndependentWindow:)`.
 - [ ] **Step 2: Delete the picker code.** Remove `chooseContent`, the `SCContentSharingPickerObserver` conformance and its three callbacks, `resolvePicker`, `pickerContinuation`, `activePicker`, `ContentFilterBox`, `chooseDisplay`, the macOS 15.2 branch, `timerOverlay`, and `CaptureTimerOverlay.swift`.
 - [ ] **Step 3: Update `PoachApp.swift`.**
-  - Call `service.startRecording(mode: captureMode)` with no closure, and delete `RecordingStatusWindowController.countDown(seconds:)`.
+  - Call `service.startRecording(mode: captureMode)` with no closure, and delete `RecordingStatusWindowController.countDown()`. `takeScreenshot()` needs no change.
   - In the ⌘⇧P hotkey action, check `CaptureCountdownController.shared.isRunning` first: if it is running, call `cancel()` and return.
 - [ ] **Step 4: Run `swift build --package-path apps/macos` and `bash scripts/test-capture-selection.sh`, then do the manual Review Focus pass** on the debug binary:
-  - Each mode × Off, 3s and 10s.
+  - Each mode × Record and Screenshot × Off, 3s and 10s. Screenshots never contain the outline, number or ✕.
   - During a 10s countdown, clicks reach other apps, and Esc, ✕ and ⌘⇧P each cancel.
   - After a cancel, an error, or completion, Esc closes a Finder menu normally.
   - Close the chosen window during the countdown: the alert says "That window is no longer available.".
@@ -239,6 +240,6 @@ print("Capture target geometry passed.")
 - Create: `HANDOFF.md`
 
 - [ ] **Step 1: `.gitignore`:** add `.superpowers/`. Commit alone: `chore: ignore brainstorming companion files`.
-- [ ] **Step 2: `README.md`:** describe the optional Off/3s/10s timer (default Off), that all three modes are chosen in Poach's own overlay, the shortcuts (Space/Return to start, Esc/✕/⌘⇧P to cancel a countdown, ⌘⇧P or Space on the focused panel to stop), and that the screen stays usable during the countdown. **`CONTRIBUTING.md`:** add the new test script.
+- [ ] **Step 2: `README.md`:** describe the optional Off/3s/10s timer (default Off) for recordings and screenshots, that all three modes are chosen in Poach's own overlay, the shortcuts (Space/Return to start, Esc/✕/⌘⇧P to cancel a countdown, ⌘⇧P or Space on the focused panel to stop), and that the screen stays usable during the countdown. **`CONTRIBUTING.md`:** add the new test script.
 - [ ] **Step 3: `HANDOFF.md`:** status, what this branch did, how to run (`swift build --package-path apps/macos`, `bash scripts/build-macos-app.sh`, both test scripts), and open items: a global Space stop was deferred by the user ("for now"); Esc during a countdown cancels instead of reaching other apps' menus.
 - [ ] **Step 4: Commit the docs:** `docs: describe optional capture timer and poach selection`.
