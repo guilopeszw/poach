@@ -276,6 +276,15 @@ struct PoachRecordingStatusView: View {
             Button("Stop") { onStop() }
                 .buttonStyle(PoachActionStyle(fill: .red, foreground: .white))
                 .keyboardShortcut(.defaultAction)
+                .help("Stop (Space or Return)")
+        }
+        .background {
+            // Space stops only while this panel is key; it is never registered globally,
+            // so spaces typed into the app being recorded are left alone.
+            Button("") { onStop() }
+                .keyboardShortcut(.space, modifiers: [])
+                .opacity(0)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
