@@ -183,7 +183,7 @@ struct PoachApp: App {
         let picker = NSOpenPanel()
         picker.title = "Load a video or image"
         picker.prompt = "Load"
-        picker.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie, .png, .jpeg, .tiff, .webP, .bmp]
+        picker.allowedContentTypes = PoachImportMedia.contentTypes
         picker.allowsOtherFileTypes = false
         picker.canChooseDirectories = false
         picker.canChooseFiles = true
@@ -196,7 +196,7 @@ struct PoachApp: App {
         guard !isWorking, !isRecording, mediaURL.isFileURL else { return }
         workingTitle = "Opening file…"
         isWorking = true
-        let isImage = ["png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp"].contains(mediaURL.pathExtension.lowercased())
+        let isImage = PoachImportMedia.isImage(mediaURL)
         importStatus.begin("Opening file", stages: isImage ? InspectionStage.stillImage : InspectionStage.allCases)
         loadingFile = mediaURL
         Task {

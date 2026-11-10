@@ -28,6 +28,7 @@ struct PoachHomeView: View {
     @ObservedObject var status: InspectionStatus
     @State private var targeted = false
     @State private var hovering = false
+    @State private var dropError: String?
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -109,7 +110,10 @@ struct PoachHomeView: View {
                 .background(.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .contain)
             } else {
-                Button(action: onLoadMedia) {
+                Button {
+                    dropError = nil
+                    onLoadMedia()
+                } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .medium))
@@ -120,9 +124,10 @@ struct PoachHomeView: View {
                             .accessibilityHidden(true)
                         Text("Drop an image or video")
                             .font(.system(size: 13, weight: .semibold))
-                        Text("or click to browse")
+                        Text(dropError ?? "or click to browse")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.ink)
+                            .multilineTextAlignment(.center)
                     }
                     .padding(6)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -136,15 +141,29 @@ struct PoachHomeView: View {
                     .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Open an image or video")
+                .accessibilityHint(dropError ?? "Choose a file or drop it here")
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: highlightDropZone)
             .onHover { hovering = $0 }
             .onDisappear { hovering = false }
             .buttonStyle(.plain)
             .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
-                guard !isWorking, !isRecording, providers.count == 1, let file = providers.first else { return false }
+                guard !isWorking, !isRecording else { return false }
+                guard providers.count == 1, let file = providers.first else {
+                    dropError = "Drop one file at a time."
+                    return false
+                }
                 _ = file.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                    guard let data, let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL else { return }
-                    DispatchQueue.main.async { onDropMedia(url) }
+                    let url = data.flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                    let error: String?
+                    if let url {
+                        error = PoachImportMedia.rejectionReason(for: url)
+                    } else {
+                        error = "Poach couldn't read this file."
+                    }
+                    DispatchQueue.main.async {
+                        dropError = error
+                        if let url, error == nil { onDropMedia(url) }
+                    }
                 }
                 return true
             }
