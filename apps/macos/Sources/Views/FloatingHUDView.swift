@@ -448,11 +448,23 @@ struct FloatingHUDView: View {
                 Text(browserEvidence.origin).foregroundStyle(.secondary).lineLimit(1)
             }
             .font(.caption)
+        } else if !isVideo, let captureEpochRange,
+                  let candidate = PoachChromeBridge.shared.evidence(for: captureEpochRange) {
+            HStack(spacing: 6) {
+                Button("Include Chrome evidence") {
+                    browserEvidence = candidate
+                    shareStatus = ""
+                }
+                .buttonStyle(.link)
+                .accessibilityHint("Includes browser observations if they match this screenshot")
+                Text(candidate.origin).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .font(.caption)
         } else if let captureEpochRange, PoachChromeBridge.shared.isReceiving(for: captureEpochRange) {
             Label("Receiving Chrome evidence…", systemImage: "network")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        } else {
+        } else if isVideo {
             Label(PoachChromeBridge.shared.missingEvidenceReason, systemImage: "xmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(PoachPalette.errorText)
@@ -637,7 +649,7 @@ struct FloatingHUDView: View {
     }
 
     private func refreshChromeEvidence() {
-        guard browserEvidence == nil, let captureEpochRange else { return }
+        guard isVideo, browserEvidence == nil, let captureEpochRange else { return }
         browserEvidence = PoachChromeBridge.shared.evidence(for: captureEpochRange)
     }
 
