@@ -67,6 +67,7 @@ enum ScreenCaptureError: LocalizedError {
 struct ScreenCaptureRecording {
     let url: URL
     let pointerTrace: PointerTrace
+    let epochRange: ClosedRange<Int>?
 }
 
 @available(macOS 15.0, *)
@@ -82,6 +83,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     private var didFinish = false
     private var recordingError: Error?
     private var pointerTraceRecorder: PointerTraceRecorder?
+    private var startedAtEpochMs: Int?
     private var activeSelectedRegion: SelectedRegion?
     private var recordingAreaShadow: RecordingAreaShadowWindowController?
 
@@ -223,6 +225,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         let traceRecorder = PointerTraceRecorder(captureBounds: captureBounds)
         do {
             try await stream.startCapture()
+            startedAtEpochMs = Int((Date().timeIntervalSince1970 * 1000).rounded())
             _ = traceRecorder.start()
             pointerTraceRecorder = traceRecorder
         } catch {
@@ -243,6 +246,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         recordingAreaShadow?.close()
         recordingAreaShadow = nil
         guard let stream, let outputURL else { throw ScreenCaptureError.notRecording }
+        let stoppedAtEpochMs = Int((Date().timeIntervalSince1970 * 1000).rounded())
         let pointerTrace = pointerTraceRecorder?.stop() ?? .unavailable(bounds: .zero)
         pointerTraceRecorder = nil
         try await stream.stopCapture()
@@ -254,7 +258,10 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         }
         self.stream = nil
         self.outputURL = nil
-        return ScreenCaptureRecording(url: outputURL, pointerTrace: pointerTrace)
+        let epochRange = startedAtEpochMs.flatMap { start in
+            start <= stoppedAtEpochMs ? start...stoppedAtEpochMs : nil
+        }
+        return ScreenCaptureRecording(url: outputURL, pointerTrace: pointerTrace, epochRange: epochRange)
     }
 
     private static func pointerCaptureBounds(filter: SCContentFilter, selectedRegion: SelectedRegion?) -> CGRect {

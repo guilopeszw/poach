@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Poach",
+  "version": "0.1.0",
+  "description": "Collect browser evidence for a component in a Poach recording.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Poach this component",
+    "default_icon": {
+      "128": "poach.png"
+    }
+  },
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "bridge.js"
+  },
+  "icons": {
+    "128": "poach.png"
+  }
+}

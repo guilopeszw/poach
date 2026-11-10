@@ -81,6 +81,7 @@ struct PoachSettingsView: View {
     var captureBusy = false
     @State private var usage: CaptureStorage.Usage?
     @State private var storageError: String?
+    @State private var showsChromeSetup = false
 
     private func refreshStorage() {
         do { usage = try CaptureStorage.scan(); storageError = nil }
@@ -109,6 +110,9 @@ struct PoachSettingsView: View {
             .frame(minHeight: 24)
             Divider()
             MCPConnectorView()
+            Button("Set up the Chrome companion") { showsChromeSetup = true }
+                .buttonStyle(.link)
+                .sheet(isPresented: $showsChromeSetup) { PoachChromeSetupView() }
             Divider()
             HStack {
                 VStack(alignment: .leading) {

@@ -3,12 +3,23 @@ import SwiftUI
 
 struct PoachOnboardingView: View {
     let onContinue: () -> Void
+    @State private var showsChromeSetup = false
 
     var body: some View {
         VStack(spacing: 20) {
             hero
 
             featureRows
+
+            Button {
+                showsChromeSetup = true
+            } label: {
+                Label("Set up the Chrome companion", systemImage: "puzzlepiece.extension")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.link)
+            .sheet(isPresented: $showsChromeSetup) { PoachChromeSetupView() }
 
             Button(action: onContinue) {
                 Text("Continue")

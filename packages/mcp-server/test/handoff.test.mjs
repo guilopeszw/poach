@@ -54,6 +54,11 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
     { timeMs: 1900, kind: "drag", x: 1, y: 0.5, button: "left", withinCapture: false },
     { timeMs: 2000, kind: "up", x: 1, y: 0.5, button: "left", withinCapture: false },
   );
+  brief.evidence.browserEvidence = {
+    videoOffsetMs: -100,
+    events: [{ atMs: 1075, type: "drop", target: { tag: "div" } }],
+    states: [{ atMs: 1250, text: "Uploaded" }, { atMs: 1900, text: "Too big" }],
+  };
   const path = join(cache, "active-brief.json");
   await writeFile(path, JSON.stringify(brief));
   const client = new Client({ name: "poach-handoff-test", version: "1.0.0" });
@@ -63,6 +68,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   const shared = await client.callTool({ name: "poach_read_brief", arguments: {} });
   assert.ok(!shared.isError);
   assert.equal(shared.structuredContent.context, brief.context);
+  assert.deepEqual(shared.structuredContent.evidence.browserEvidence, brief.evidence.browserEvidence);
   const sharedImages = shared.content.filter(item => item.type === "image");
   assert.equal(sharedImages.length, 4);
   assert.ok(shared.content.some(item => item.type === "text" && item.text.startsWith("After drag release: 1699 ms")));
@@ -99,6 +105,10 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.ok(!moment.isError);
   assert.equal(moment.content.filter(item => item.type === "image").length, 1);
   assert.match(moment.content.find(item => item.type === "text").text, /The heart fills on click/);
+  const momentText = moment.content.find(item => item.type === "text").text;
+  assert.match(momentText, /"type":"drop".*"estimatedVideoMs":975/);
+  assert.match(momentText, /"text":"Uploaded","estimatedVideoMs":1150/);
+  assert.doesNotMatch(momentText, /Too big/);
   assert.match(moment.content.find(item => item.type === "text").text, /sample-derived click\/drag candidates/);
   assert.match(moment.content.find(item => item.type === "text").text, /Pointer trace summary: 132 samples, 110 inside the capture, 12 with a button held, 10 recorded pointer events, and 4 summarized clicks or drags\./);
   for (const name of ["poach_read_brief", "poach_read_moment"]) {

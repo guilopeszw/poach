@@ -1,0 +1,46 @@
+:root {
+  color-scheme: light;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #252525;
+  background: #f7f7f5;
+}
+
+body { width: 284px; margin: 0; }
+main { padding: 16px; }
+header { display: flex; align-items: center; gap: 9px; }
+header img { object-fit: contain; }
+h1, p { margin: 0; }
+h1 { font-size: 16px; line-height: 1.2; letter-spacing: -.25px; }
+header p, #status, label { color: #565653; }
+header p { font-size: 12px; }
+#status { margin: 13px 0 12px; }
+form { display: grid; gap: 8px; }
+label { font-size: 12px; font-weight: 600; }
+
+button, input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+}
+
+input { border-color: #d3d3ce; background: #fff; }
+button { background: #262626; color: #fff; font-weight: 600; cursor: pointer; }
+button:enabled:hover { background: #414141; }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid #666; outline-offset: 2px; }
+footer { display: flex; justify-content: space-between; gap: 6px; }
+footer button {
+  width: auto;
+  min-height: 30px;
+  margin-top: 5px;
+  padding-inline: 3px;
+  background: transparent;
+  color: #565653;
+  font-size: 12px;
+}
+footer button:enabled:hover { background: #ecece9; }
+[hidden] { display: none !important; }

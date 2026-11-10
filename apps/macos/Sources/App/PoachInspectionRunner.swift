@@ -32,6 +32,7 @@ struct PoachInspection: Codable {
     let timing: PoachTiming
     var pointerTrace: PointerTrace?
     var annotations: [InteractionAnnotation]?
+    var browserEvidence: PoachBrowserEvidence?
 }
 
 struct InteractionAnnotation: Codable {

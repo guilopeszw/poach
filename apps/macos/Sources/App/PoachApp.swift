@@ -313,7 +313,7 @@ struct PoachApp: App {
             }
             result.pointerTrace = recording.pointerTrace
             Self.captureLog.notice("Recording analysis completed")
-            hudWindow.show(result, original: videoURL)
+            hudWindow.show(result, original: videoURL, recordingEpochRange: recording.epochRange)
             Self.captureLog.notice("Review editor presented")
         } catch {
             NSApp.unhide(nil)
@@ -517,6 +517,7 @@ private final class PoachAppDelegate: NSObject, NSApplicationDelegate, Observabl
     private var appearanceObservation: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        PoachChromeBridge.shared.startIfPaired()
         appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { _, _ in
             Task { @MainActor [weak self] in self?.refreshIcon() }
         }
@@ -661,7 +662,7 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate, Obs
         panel?.close()
     }
 
-    func show(_ result: PoachInspection, original: URL? = nil) {
+    func show(_ result: PoachInspection, original: URL? = nil, recordingEpochRange: ClosedRange<Int>? = nil) {
         CaptureStorage.openPaths = [result.sourcePath] + result.keyframes.map(\.imagePath) + [original?.path].compactMap { $0 }
         let palette = result.palette.map { HUDPaletteToken(hex: $0, color: Color(hex: $0)) }
         let panel = self.panel ?? makePanel()
@@ -677,9 +678,16 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate, Obs
             availableHeight: contentHeight - 32,
             palette: palette,
             pointerTrace: result.pointerTrace,
-            onShareContext: { try PoachHandoff.share(result, context: $0, annotations: $1) },
-            onSaveFavorite: { name, context, annotations in
-                try PoachFavoriteStore.save(name: name, result: result, context: context, annotations: annotations)
+            recordingEpochRange: recordingEpochRange,
+            onShareContext: { context, annotations, browserEvidence in
+                var handoff = result
+                handoff.browserEvidence = browserEvidence
+                return try PoachHandoff.share(handoff, context: context, annotations: annotations)
+            },
+            onSaveFavorite: { name, context, annotations, browserEvidence in
+                var handoff = result
+                handoff.browserEvidence = browserEvidence
+                return try PoachFavoriteStore.save(name: name, result: handoff, context: context, annotations: annotations)
             },
             onClose: { [weak self] in
                 self?.panel?.performClose(nil)
