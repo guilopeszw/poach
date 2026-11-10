@@ -66,21 +66,14 @@ struct InspectionStatusLabel: View {
             }
 
             if expanded {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     ForEach(Array(status.steps.enumerated()), id: \.offset) { index, step in
                         stepRow(index, step)
                     }
                 }
+                .padding(.top, 4)
                 .accessibilityElement(children: .contain)
-                .transition(.opacity)
-            }
-        }
-        .padding(allowsExpansion ? 10 : 0)
-        .background {
-            if allowsExpansion {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(PoachPalette.panel)
-                    .strokeBorder(PoachPalette.outline)
+                .transition(.opacity.combined(with: .offset(y: -4)))
             }
         }
         .animation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.18), value: expanded)
@@ -98,20 +91,19 @@ struct InspectionStatusLabel: View {
                 Text(seconds == 0 ? "Analysis complete" :
                     "Analyzed in \(seconds) \(seconds == 1 ? "second" : "seconds")")
             } else {
-                ProgressView().controlSize(.mini).accessibilityHidden(true)
                 if expanded {
                     let remaining = max(1, status.steps.count - status.activeIndex)
                     Text(remaining == 1 ? "1 step left" : "\(remaining) steps left")
                 } else {
+                    ProgressView().controlSize(.mini).accessibilityHidden(true)
                     Text(status.steps.indices.contains(status.activeIndex) ? status.steps[status.activeIndex] : "Analyzing capture")
                 }
             }
             if allowsExpansion {
                 Spacer(minLength: 8)
-                Image(systemName: expanded ? "minus" : "plus")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 20, height: 20)
-                    .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 5))
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .frame(width: 20, height: 22)
                     .accessibilityHidden(true)
             }
         }
@@ -133,16 +125,11 @@ struct InspectionStatusLabel: View {
             }
             .frame(width: 16)
             .accessibilityHidden(true)
-            Text(title)
+            Text(title).fontWeight(active ? .semibold : .regular)
             Spacer(minLength: 0)
         }
         .font(.caption)
         .foregroundStyle(active ? .primary : .secondary)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background {
-            if active { Capsule().strokeBorder(PoachPalette.outline) }
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(complete ? "Complete" : active ? "In progress" : "Pending")

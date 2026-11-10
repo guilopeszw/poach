@@ -109,8 +109,7 @@ struct PoachHomeView: View {
                     }
                     Spacer()
                 }
-                .padding(14)
-                .background(.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+                .padding(.vertical, 10)
                 .accessibilityElement(children: .contain)
             } else {
                 Button {
