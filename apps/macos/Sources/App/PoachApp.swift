@@ -196,12 +196,13 @@ struct PoachApp: App {
         guard !isWorking, !isRecording, mediaURL.isFileURL else { return }
         workingTitle = "Opening file…"
         isWorking = true
-        importStatus.begin("Opening file…")
+        let isImage = ["png", "jpg", "jpeg", "webp", "tif", "tiff", "bmp"].contains(mediaURL.pathExtension.lowercased())
+        importStatus.begin("Opening file", stages: isImage ? InspectionStage.stillImage : InspectionStage.allCases)
         loadingFile = mediaURL
         Task {
             defer { loadingFile = nil; isWorking = false }
             do {
-                let result = try await PoachInspectionRunner.inspect(videoURL: mediaURL) { importStatus.steps.append($0) }
+                let result = try await PoachInspectionRunner.inspect(videoURL: mediaURL) { importStatus.advance(to: $0) }
                 hudWindow.show(result, status: importStatus)
             } catch {
                 showError(title: "Poach couldn't load this media", error: error)
@@ -218,9 +219,9 @@ struct PoachApp: App {
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.screenshotRequiresNewerMacOS }
                 let imageURL = try await ScreenCaptureService().captureScreenshot(mode: captureMode)
-                hudWindow.showPreparing("Opening screenshot…")
+                hudWindow.showPreparing("Opening screenshot", stages: InspectionStage.stillImage)
                 let result = try await PoachInspectionRunner.inspect(videoURL: imageURL) { stage in
-                    hudWindow.preparation.steps.append(stage)
+                    hudWindow.preparation.advance(to: stage)
                 }
                 hudWindow.show(result, status: hudWindow.preparation, original: imageURL)
             } catch {
@@ -301,7 +302,7 @@ struct PoachApp: App {
             hudWindow.showPreparing()
             recordingWindow.close()
             var result = try await PoachInspectionRunner.inspect(videoURL: videoURL, isRecording: true) { stage in
-                hudWindow.preparation.steps.append(stage)
+                hudWindow.preparation.advance(to: stage)
             }
             result.pointerTrace = recording.pointerTrace
             Self.captureLog.notice("Recording analysis completed")
@@ -575,14 +576,14 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         NSApp.windows.first { $0.title == "Poach" }?.makeKeyAndOrderFront(nil)
     }
 
-    func showPreparing(_ title: String = "Opening recording…") {
-        preparation.begin(title)
+    func showPreparing(_ title: String = "Opening recording", stages: [InspectionStage] = InspectionStage.allCases) {
+        preparation.begin(title, stages: stages)
         let panel = self.panel ?? makePanel()
         panel.title = "Poach — Preparing your brief"
         panel.contentView = NSHostingView(rootView:
             VStack(spacing: 16) {
                 Text("Preparing your capture for review").font(.headline)
-                InspectionStatusLabel(status: preparation)
+                InspectionStatusLabel(status: preparation).frame(width: 360)
             }
             .frame(width: 660, height: 500)
             .background(PoachPalette.canvas)

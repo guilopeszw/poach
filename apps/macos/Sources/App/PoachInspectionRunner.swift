@@ -47,7 +47,7 @@ enum PoachInspectionError: LocalizedError {
 
 enum PoachInspectionRunner {
     static func inspect(videoURL: URL, isRecording: Bool = false,
-                        onProgress: @escaping @MainActor @Sendable (String) -> Void) async throws -> PoachInspection {
+                        onProgress: @escaping @MainActor @Sendable (InspectionStage) -> Void) async throws -> PoachInspection {
         guard let engine = findEngine() else { throw PoachInspectionError.projectNotBuilt }
         guard let node = findNode() else { throw PoachInspectionError.nodeNotFound }
         let entry = engine.absoluteString
@@ -76,11 +76,10 @@ enum PoachInspectionRunner {
                 try process.run()
                 var data = Data()
                 for try await line in output.fileHandleForReading.bytes.lines {
-                    switch line {
-                    case "motion": await onProgress("Finding movement…")
-                    case "frames": await onProgress("Preparing preview images…")
-                    case "palette": await onProgress("Sampling colors…")
-                    default: data.append(contentsOf: line.utf8)
+                    if let stage = InspectionStage(rawValue: line) {
+                        await onProgress(stage)
+                    } else {
+                        data.append(contentsOf: line.utf8)
                     }
                 }
                 process.waitUntilExit()

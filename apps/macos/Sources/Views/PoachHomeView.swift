@@ -101,7 +101,7 @@ struct PoachHomeView: View {
                     Image(systemName: "doc").font(.title2).foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(loadingFile.lastPathComponent).font(.headline).lineLimit(1)
-                        InspectionStatusLabel(status: status)
+                        InspectionStatusLabel(status: status, allowsExpansion: false)
                     }
                     Spacer()
                 }
