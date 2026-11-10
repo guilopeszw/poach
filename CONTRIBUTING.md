@@ -4,9 +4,11 @@ Thanks for helping improve Poach. The project is a pnpm/Turborepo monorepo with 
 
 ## Contribute a change
 
-Create a topic branch from the latest `main` and open a pull request against `main`. Explain the problem, the resulting behavior, and how you verified it. For interface changes, include a screenshot or short recording made with synthetic or explicitly shareable media. Call out changes to permissions, storage, or supported macOS versions.
+Create your branch from the latest `main` and name it `username/what-you-did`. Use your GitHub username before the slash and a short, lowercase, hyphen-separated description after it. For example, `guilopeszw/poach-v1` or `octocat/fix-capture-overlay`.
 
-**Every commit must be atomic and use a Conventional Commit subject** in the form `type(scope): summary`. Choose the area touched as the scope and describe the change with an imperative verb. For example:
+Open a pull request against `main`. Use a Conventional Commit title in the form `type(scope): summary`, such as `fix(capture): exclude Poach windows from recordings`. Describe the change the reviewer will see. In the body, explain the problem, the resulting behavior, and how you verified it. For interface changes, include a screenshot or short recording made with synthetic or explicitly shareable media. Call out changes to permissions, storage, or supported macOS versions.
+
+**Every commit must be atomic and use a Conventional Commit subject** in the same form. Choose the area touched as the scope and describe the change with an imperative verb. For example:
 
 ```text
 fix(codex): install a single connector launcher argument
@@ -16,7 +18,7 @@ docs(readme): show the outlined instructions field
 
 Keep one independently reviewable change per commit. Include regression tests with the fix they verify. Split unrelated edits, formatting, or documentation into separate commits. Use `feat` for new behavior, `fix` for corrections, `docs` for documentation, and `style`, `refactor`, `test`, `build`, `ci`, or `chore` when appropriate. Flag breaking interface changes with `!` before the colon and describe the migration in the commit body.
 
-Use a lowercase scope made of letters, digits, dots, underscores, slashes, or hyphens, starting with a letter or digit. The check also accepts `perf` and `revert`. Rebase your branch to update it and reword any failing commits. Every PR must pass the commit check and resolve review conversations. PRs from contributors require approval from @guilopeszw, the code owner for every path. New commits dismiss earlier approvals. For an owner-authored PR, the owner can use GitHub’s review bypass to rebase and merge after the checks pass. Reserve repository administrator access for the owner.
+Use a lowercase scope made of letters, digits, dots, underscores, slashes, or hyphens, starting with a letter or digit. The check also accepts `perf` and `revert`. Rebase your branch to update it and reword any failing commits. GitHub checks each commit subject. Reviewers check branch names and PR titles. Every PR must pass the commit check and resolve review conversations. PRs from contributors require approval from @guilopeszw, the code owner for every path. New commits dismiss earlier approvals. For an owner-authored PR, the owner can use GitHub’s review bypass to rebase and merge after the checks pass. Reserve repository administrator access for the owner.
 
 Run the checks for each package you touch. Keep generated builds, dependency directories, app bundles, temporary captures, and private media out of commits. Update the README and this guide when commands, capabilities, permissions, or data handling change. Contributions are licensed under the repository’s [Apache License 2.0](LICENSE).
 
@@ -54,6 +56,9 @@ For Screen Recording development on macOS 26, use an `Apple Development` identit
 
 ## Project conventions
 
+- Make the smallest change that fully solves the problem. Preserve existing behavior and data formats unless the change explicitly updates them. Keep validation and state changes consistent when an operation fails or is retried.
+- Use names that describe what a value represents or what a function does. Prefer straightforward control flow, focused functions, and explicit error handling. Reuse existing components, types, and helpers when they fit. Extract a new helper when it makes the code easier to read or removes repeated behavior.
+- Follow the package boundaries. SwiftUI and AppKit belong in `apps/macos`, media analysis belongs in `packages/core`, and protocol handling belongs in `packages/mcp-server`. Use strict TypeScript with explicit types for public inputs and outputs. In Swift, keep UI state on the main actor and keep blocking analysis out of the UI path.
 - Keep the analysis core deterministic, typed, headless, and independent from the macOS app.
 - Keep MCP stdout reserved for protocol messages. Send diagnostics to stderr.
 - Keep screen recordings local. Do not add network upload or telemetry without explicit product approval.
@@ -61,13 +66,18 @@ For Screen Recording development on macOS 26, use an `Apple Development` identit
 - Prefer system frameworks and existing command-line tools over adding runtime dependencies.
 - Keep temporary media bounded and document any new retention behavior.
 - Use clear, accessible labels and respect macOS appearance, contrast, and motion preferences.
+- Verify through the normal app, CLI, or MCP entry point. Use a focused regression test when existing checks would miss the bug, and use synthetic or explicitly shareable fixtures.
 - Add focused documentation when changing commands, permissions, supported file formats, or user data handling.
 
 ## Capture and handoff checks
 
 The explicit MCP share action keeps the latest brief in `~/Library/Caches/Poach/active-brief.json` and writes each share to `~/Library/Caches/Poach/briefs/<uuid>.json`. Preserve the latest-brief format for callers that omit an ID, and resolve a supplied brief ID to its archived file. Keep files user-only (`0700` directories, `0600` brief files). All shared briefs expire after 24 hours; expired archives are removed when read by ID, while only the app replaces the latest snapshot, and media referenced by any unexpired brief must remain protected from storage cleanup. Document any changes to this validity period. Native screen recordings also sample pointer position and mouse-button state at a nominal 120 Hz while capture is active, capped at 5,000 events; coordinates and timestamps are relative to the captured bounds and recording start. Include sample, in-bounds, and held-button counts so an empty event list can be distinguished from a sampler that never ran. The copied handoff must reflect the trace actually present and must not promise click/drag observations when none were sampled. MCP derives sample-based click/drag candidates from these events and returns nearby actions from `poach_read_moment`. The brief includes bounded frame sequences for the three most recent releases inside the capture, with a final sample before the next drag or at clip end. Pointer polling can miss or misclassify brief actions, so correlate candidates with frames and user notes and never present inferred effects as recorded facts. The local trace has no keyboard or scroll data, uses no global event monitor or event tap, and is included only in an explicitly shared brief. Imported media does not receive a native pointer trace.
 
-During selected-area recording, Poach shows a click-through dim mask and soft edge shadow outside the recorded rectangle; the capture filter excludes Poach windows so the overlay stays out of the saved video. Verify that the overlay follows the selected bounds, target clicks pass through, and no shadow pixels appear in the clip. The review window uses AVKit for local video playback. Playhead notes are included as timestamped text and structured annotations in the explicitly shared snapshot, so users can label observed actions in their own words. The pointer trace records sampled movement, button down/up transitions, and drag samples; it does not claim to infer intent. Poach does not call an LLM API; the connected assistant interprets the capture evidence.
+The Capture and editor windows are movable. Use application exclusion for Screen area and Full screen so even Poach controls opened after recording starts stay out of the result. App window shows a chooser with a thumbnail, app icon, and title for each visible window when Poach has Screen Recording access. Thumbnails stay in memory for the duration of the chooser. If macOS denies access to that list, Poach opens the system’s single-window picker. To test, move Poach’s Stop control over a test surface during a recording and confirm it is absent from playback. For Screen area, also check that the click-through shadow follows the selection, target clicks pass through, and the shadow stays out of the clip.
+
+For App window, open a test window and verify that its thumbnail and title appear and Poach’s own windows are absent. Check arrow-key navigation, Return to confirm, and Escape to cancel. Use **Cancel** in the window chooser or **Cancel selection** while the macOS picker is pending. Both actions should restore the capture controls. Reopen the chooser and select the test window to verify the next attempt. Repeat the pending-picker cancellation check in Full screen mode.
+
+The review window uses AVKit for local video playback. Playhead notes are included as timestamped text and structured annotations in the explicitly shared snapshot, so users can label observed actions in their own words. The pointer trace records sampled movement, button down/up transitions, and drag samples. Poach does not call an LLM API. The connected assistant interprets the capture evidence.
 
 `poach_read_moment` accesses the latest explicitly shared video by default or a selected brief when given its ID, enforcing the same 24-hour validity period. It returns reference pixels directly, without retaining additional image files. Keep this scope when extending assistant inspection.
 
@@ -90,6 +100,8 @@ Motion-analysis checks include stationary video. Verify that a quiet recording y
 When changing the local dropzone benchmark, check the PNG success path, MP4 refusal, drag cancellation, and Replay in a browser. Use the benchmark server command below.
 
 Run `pnpm run build:connectors` after MCP changes. To exercise the bundled server rather than the development entry point, set `POACH_TEST_SERVER` to the absolute path to the packaged server.mjs and run `node --test packages/mcp-server/test/handoff.test.mjs`. To exercise Claude, unpack the .mcpb and run the command from its manifest with Poach installed in Applications. The tests use synthetic media and an isolated Poach cache.
+
+Favorites keep handoff metadata and up to three PNGs, capped at 256 KiB each, in `~/Library/Application Support/Poach/Presets` until deleted. They do not store the source recording or its path. Copying a favorite writes an ordinary 24-hour brief with temporary frame paths that remain valid after favorite deletion. Same-volume handoffs link to the existing frame data to avoid duplicating image bytes. Test bookmark, relaunch, one-click copy, and removal with synthetic media. Verify the copied brief survives source cleanup and favorite removal during its 24-hour window. A `.poach` export is a versioned file of up to 4 MiB with embedded reference images and handoff metadata. Import rebuilds the saved frames from those bytes without using any paths supplied by the file. Test round-trip export and import and confirm MCP directs timestamp requests to the saved frames.
 
 When changing storage cleanup, verify it with temporary fixtures. Cover native recordings, trimmed videos, generated frames, active handoff paths, the open edit, unrelated files, and symlinks. An unreadable shared brief must prevent deletion.
 
