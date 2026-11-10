@@ -10,6 +10,8 @@ struct CaptureWindowCandidate: Equatable {
     let title: String
     let frame: CGRect
     let layer: Int
+    /// Window opacity; fully transparent windows are never targets.
+    var alpha: Double = 1
 
     var spokenName: String {
         title.isEmpty ? appName : "\(appName) — \(title)"
@@ -32,15 +34,17 @@ enum CaptureTargetGeometry {
                 appName: entry[kCGWindowOwnerName as String] as? String ?? "",
                 title: entry[kCGWindowName as String] as? String ?? "",
                 frame: frame,
-                layer: (entry[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+                layer: (entry[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0,
+                alpha: (entry[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1
             )
         }
     }
 
-    /// Normal app windows only (layer 0), large enough to be a real target, never Poach's own.
+    /// Normal, visible app windows only (layer 0, not transparent), large enough to be a real target, never Poach's own.
     static func selectableWindows(_ frontToBack: [CaptureWindowCandidate], excludingPID: pid_t) -> [CaptureWindowCandidate] {
         frontToBack.filter {
             $0.layer == 0
+                && $0.alpha > 0
                 && $0.frame.width >= minimumWindowSide
                 && $0.frame.height >= minimumWindowSide
                 && $0.ownerPID != excludingPID
