@@ -28,5 +28,21 @@
 	<string>Copyright © 2026 Guilherme Lopes.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Poach records a short clip of your display to extract interface motion, timing, and colors. The clip is analyzed locally on this Mac.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>dev.poach.handoff</string>
+			<key>UTTypeDescription</key>
+			<string>Poach Handoff</string>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.json</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array><string>poach</string></array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

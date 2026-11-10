@@ -217,6 +217,27 @@ test("archived briefs remain readable by ID after a newer brief is shared", { ti
   assert.ok(latestFrame);
   assert.notEqual(olderFrame.data, latestFrame.data, "each brief ID should read its own recording");
 
+  const preset = {
+    ...latest,
+    briefId: "c87701b6-62ae-44be-bd74-34604931a854",
+    evidence: {
+      ...latest.evidence,
+      sourcePath: "",
+      keyframes: [{ kind: "peak", timeMs: 500, imagePath: join(home, "preset.png") }],
+      annotations: [{ timeMs: 500, text: "The badge expands here." }],
+    },
+  };
+  await writeFile(preset.evidence.keyframes[0].imagePath, Buffer.from(latestFrame.data, "base64"));
+  await writeFile(join(archive, `${preset.briefId}.json`), JSON.stringify(preset));
+  const saved = await client.callTool({ name: "poach_read_brief", arguments: { briefId: preset.briefId } });
+  assert.ok(!saved.isError);
+  assert.equal(saved.structuredContent.briefId, preset.briefId);
+  assert.deepEqual(saved.structuredContent.evidence.annotations, preset.evidence.annotations);
+  assert.equal(saved.content.find(item => item.type === "image")?.data, latestFrame.data);
+  const savedMoment = await client.callTool({ name: "poach_read_moment", arguments: { briefId: preset.briefId, timeMs: 500 } });
+  assert.equal(savedMoment.isError, true);
+  assert.match(savedMoment.content[0].text, /Use poach_read_brief to see its saved frames/);
+
   const olderPath = join(archive, `${older.briefId}.json`);
   await writeFile(olderPath, JSON.stringify({ ...older, sharedAt: older.sharedAt - 86401 }));
   const expired = await client.callTool({ name: "poach_read_brief", arguments: { briefId: older.briefId } });

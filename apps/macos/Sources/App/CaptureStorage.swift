@@ -65,7 +65,8 @@ enum CaptureStorage {
             do {
                 let brief = try JSONDecoder().decode(Handoff.self, from: Data(contentsOf: file))
                 if Date().timeIntervalSince1970 - brief.sharedAt <= 86400 {
-                    paths += [brief.evidence.sourcePath] + brief.evidence.keyframes.map(\.imagePath)
+                    if !brief.evidence.sourcePath.isEmpty { paths.append(brief.evidence.sourcePath) }
+                    paths += brief.evidence.keyframes.map(\.imagePath)
                 }
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 // A brief may expire or be removed while storage is being scanned.

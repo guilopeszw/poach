@@ -34,7 +34,8 @@ struct PoachHomeView: View {
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var settings = false
+    private enum Tab { case capture, favorites, settings }
+    @State private var tab = Tab.capture
     @State private var captureType = CaptureType.record
 
     private var primaryTitle: String {
@@ -49,20 +50,22 @@ struct PoachHomeView: View {
             HStack {
                 header
                 Spacer()
-                PoachSegments(label: "Poach", selection: $settings, choices: [(false, "Capture"), (true, "Settings")], underlined: true)
-                    .frame(width: 144)
+                PoachSegments(label: "Poach", selection: $tab,
+                              choices: [(.capture, "Capture"), (.favorites, "Favorites"), (.settings, "Settings")],
+                              underlined: true)
+                    .frame(width: 214)
             }
             .padding(.bottom, 5)
             .overlay(alignment: .bottom) { Divider() }
             Group {
-                if settings {
-                    PoachSettingsView(captureBusy: isWorking || isRecording)
-                } else {
-                    captureControls
+                switch tab {
+                case .capture: captureControls
+                case .favorites: PoachFavoritesView()
+                case .settings: PoachSettingsView(captureBusy: isWorking || isRecording)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.14), value: settings)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.14), value: tab)
         }
         .padding(16)
         .frame(width: layoutWidth ?? Self.windowSize.width, height: Self.windowSize.height, alignment: .topLeading)

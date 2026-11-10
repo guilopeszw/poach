@@ -200,7 +200,7 @@ server.registerTool("poach_read_brief", {
           content.push({ type: "text", text: `The ${frame.kind} keyframe is unavailable. Ask the user to capture and share again; do not infer its visual contents.` });
         }
       }
-      if (brief.evidence.mediaType === "video" && typeof brief.evidence.sourcePath === "string") {
+      if (brief.evidence.mediaType === "video" && typeof brief.evidence.sourcePath === "string" && brief.evidence.sourcePath.length > 0) {
         const drags = responseBrief.evidence.interactionActions.actions.filter((action) => action.kind === "drag");
         const releases = drags.filter((action) => action.releaseWithinCapture);
         const dragStarts = drags.map((action) => action.timeMs).sort((first, second) => first - second);
@@ -244,6 +244,7 @@ server.registerTool("poach_read_moment", {
     const brief = z.object({ briefId: z.string().uuid().optional(), sharedAt: z.number(), evidence: z.object({
       mediaType: z.literal("video"), sourcePath: z.string(),
     }).passthrough() }).parse(await readSharedBrief(briefId));
+    if (!brief.evidence.sourcePath) throw new Error("This favorite keeps reference frames without the original recording. Use poach_read_brief to see its saved frames.");
     const png = await readVideoMoment(brief.evidence.sourcePath, timeMs);
     if (png.length > 5 * 1024 * 1024) throw new Error("Reference image exceeds the 5 MB limit");
     const annotations = z.array(z.object({ timeMs: z.number(), text: z.string() })).safeParse(brief.evidence.annotations);

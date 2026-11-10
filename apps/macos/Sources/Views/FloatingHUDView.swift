@@ -38,6 +38,11 @@ struct FloatingHUDView: View {
     let palette: [HUDPaletteToken]
     let pointerTrace: PointerTrace?
     var onShareContext: (String, [InteractionAnnotation]) throws -> String
+    var onSaveFavorite: ((String, String, [InteractionAnnotation]) throws -> UUID)?
+    @State private var favoriteID: UUID?
+    @State private var showingSaveFavorite = false
+    @State private var favoriteName = ""
+    @State private var favoriteError = ""
     @State private var connected = false
     @State private var showingAssistantSetup = false
     @State private var shareStatus = ""
@@ -124,13 +129,9 @@ struct FloatingHUDView: View {
                 guard connected else { return }
                 copyFeedback = nil
                 do {
-                    let annotations = comments.map {
-                        InteractionAnnotation(timeMs: Int(($0.time * 1_000).rounded()), text: $0.text)
-                    }
                     let id = try onShareContext(implementationContext, annotations)
                     let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets. For a drag, inspect the frames after release and include visible changes through the end of the response. Use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
-                    NSPasteboard.general.clearContents()
-                    let copied = NSPasteboard.general.setString(message, forType: .string)
+                    let copied = PoachHandoff.copyToClipboard(message)
                     shareStatus = copied ? "" : "Clipboard unavailable. Click Copy handoff to try again."
                     if copied { copyFeedback = UUID() }
 
@@ -157,6 +158,9 @@ struct FloatingHUDView: View {
                 }
                 .buttonStyle(.link)
                 .accessibilityHint("Opens assistant setup")
+            }
+            if !favoriteError.isEmpty {
+                Text(favoriteError).font(.caption).foregroundStyle(PoachPalette.errorText)
             }
             if !shareStatus.isEmpty {
                 Text(shareStatus).font(.caption).foregroundStyle(.secondary)
@@ -242,6 +246,14 @@ struct FloatingHUDView: View {
                 playback.attach(newPlayer)
             }
         }
+        .alert("Add to Favorites", isPresented: $showingSaveFavorite) {
+            TextField("Favorite name", text: $favoriteName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") { saveFavorite() }
+                .disabled(favoriteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Keep this handoff and its reference frames for later.")
+        }
         .onChange(of: comments) { shareStatus = "Changes have not been shared yet." }
         .onDisappear { playback.detach(); player = nil }
     }
@@ -310,11 +322,49 @@ struct FloatingHUDView: View {
                     .accessibilityLabel(sourceURL.lastPathComponent)
             }
             Spacer(minLength: 0)
+            if onSaveFavorite != nil {
+                let label = favoriteID == nil ? "Add to Favorites" : "Remove from Favorites"
+                Button(action: toggleFavorite) {
+                    Image(systemName: favoriteID == nil ? "bookmark" : "bookmark.fill")
+                }
+                .buttonStyle(PoachActionStyle())
+                .accessibilityLabel(label)
+                .help(label)
+            }
             Button("New capture") {
                 player?.pause()
                 onClose()
             }
             .buttonStyle(PoachActionStyle())
+        }
+    }
+
+    private var annotations: [InteractionAnnotation] {
+        comments.map { InteractionAnnotation(timeMs: Int(($0.time * 1_000).rounded()), text: $0.text) }
+    }
+
+    private func toggleFavorite() {
+        guard let favoriteID else {
+            favoriteName = ""
+            showingSaveFavorite = true
+            return
+        }
+        do {
+            try PoachFavoriteStore.delete(id: favoriteID)
+            self.favoriteID = nil
+            favoriteError = ""
+        } catch {
+            favoriteError = "Couldn’t remove the favorite. \(error.localizedDescription)"
+        }
+    }
+
+    private func saveFavorite() {
+        do {
+            favoriteID = try onSaveFavorite?(favoriteName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            implementationContext, annotations)
+            favoriteError = ""
+        } catch {
+            favoriteError = "Couldn’t save the favorite. \(error.localizedDescription)"
         }
     }
 
