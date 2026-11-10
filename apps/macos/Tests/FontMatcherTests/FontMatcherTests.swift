@@ -46,6 +46,10 @@ enum FontMatcherTests {
         let match = cropped.matches[0]
         let encoded = try JSONEncoder().encode(match)
         let decoded = try JSONDecoder().decode(PoachFontMatch.self, from: encoded)
+        let bottomLine = CGRect(x: 0, y: 0.5, width: 1, height: 0.5)
+        let second = try PoachFontMatcher.match(imageURL: multiline, selection: bottomLine)
+        let secondMatch = second.matches.first { $0.id == match.id }
+        precondition(secondMatch != nil && secondMatch != match, "The same font can be selected from a new crop")
         precondition(decoded.region == match.region, "The selected region should survive handoff encoding")
         let legacy = Data(#"{"family":"Georgia","face":"Regular","postScriptName":"Georgia"}"#.utf8)
         let legacyMatch = try JSONDecoder().decode(PoachFontMatch.self, from: legacy)

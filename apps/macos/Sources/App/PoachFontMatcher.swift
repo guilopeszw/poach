@@ -4,7 +4,7 @@ import Foundation
 import ImageIO
 import Vision
 
-struct PoachFontMatch: Codable, Identifiable, Sendable {
+struct PoachFontMatch: Codable, Equatable, Identifiable, Sendable {
     struct Region: Codable, Equatable, Sendable {
         let x: Double
         let y: Double

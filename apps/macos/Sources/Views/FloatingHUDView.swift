@@ -587,12 +587,12 @@ struct FloatingHUDView: View {
                     HStack {
                         Text(match.family + " · " + match.face).font(.caption)
                         Spacer()
-                        Button(fontMatch?.id == match.id ? "Selected" : "Use this match") {
+                        Button(fontMatch == match ? "Selected" : "Use this match") {
                             fontMatch = match
                             shareStatus = ""
                             showingFontMatches = false
                         }
-                        .disabled(fontMatch?.id == match.id)
+                        .disabled(fontMatch == match)
                     }
                     Text(fontSample)
                         .font(.custom(match.postScriptName, size: 20))
