@@ -17,7 +17,7 @@ enum FontMatcherTests {
         for (face, darkBackground) in [("Georgia-BoldItalic", false), ("Menlo-Regular", true)] {
             let url = directory.appending(path: face + ".png")
             makeScreenshot([sample], face: face, darkBackground: darkBackground, at: url)
-            precondition(PoachFontMatcher.containsReadableText(in: url), "Text gate hid \(face)")
+            precondition(!PoachFontMatcher.detectTextLines(in: url).isEmpty, "Text gate hid \(face)")
             let result = try PoachFontMatcher.match(imageURL: url, selection: fullImage)
             precondition(result.text == sample, "Unexpected OCR result: \(result.text)")
             precondition(result.matches.first?.postScriptName == face, "Expected \(face), got \(result.matches)")
@@ -25,7 +25,7 @@ enum FontMatcherTests {
 
         let blank = directory.appending(path: "blank.png")
         makeScreenshot([], face: "Georgia", darkBackground: false, at: blank)
-        precondition(!PoachFontMatcher.containsReadableText(in: blank), "Blank image should hide Snatch font")
+        precondition(PoachFontMatcher.detectTextLines(in: blank).isEmpty, "Blank image should hide Snatch font")
         do {
             _ = try PoachFontMatcher.match(imageURL: blank, selection: fullImage)
             preconditionFailure("Blank selection should fail")
@@ -33,7 +33,19 @@ enum FontMatcherTests {
 
         let multiline = directory.appending(path: "multiline.png")
         makeScreenshot([sample, "Keep the type editable."], face: "Georgia", darkBackground: false, at: multiline)
-        precondition(PoachFontMatcher.containsReadableText(in: multiline), "Users should be able to select a line")
+        let detected = PoachFontMatcher.detectTextLines(in: multiline)
+        precondition(detected.map(\.text) == [sample, "Keep the type editable."], "Detected lines should be listed top to bottom")
+        let secondLine = detected[1]
+        precondition(secondLine.bounds.minY > 0.5, "Detected coordinates should use a top-left origin")
+        let keyboardMatch = try PoachFontMatcher.match(imageURL: multiline, selection: secondLine.bounds,
+                                                       detectedText: secondLine.text)
+        precondition(keyboardMatch.text == secondLine.text)
+        precondition(keyboardMatch.matches.first?.region?.y ?? 0 > 0.5)
+        do {
+            _ = try PoachFontMatcher.match(imageURL: multiline, selection: secondLine.bounds, detectedText: secondLine.text,
+                                           installedFontNames: ["Menlo-Regular", "CourierNewPSMT", "Monaco"])
+            preconditionFailure("Unrelated installed faces should not be suggested")
+        } catch PoachFontMatcher.Failure.noMatch {}
         do {
             _ = try PoachFontMatcher.match(imageURL: multiline, selection: fullImage)
             preconditionFailure("Multiline selection should fail")
@@ -54,7 +66,7 @@ enum FontMatcherTests {
         let legacy = Data(#"{"family":"Georgia","face":"Regular","postScriptName":"Georgia"}"#.utf8)
         let legacyMatch = try JSONDecoder().decode(PoachFontMatch.self, from: legacy)
         precondition(legacyMatch.region == nil, "Older font matches should still decode")
-        print("Font matcher verified dark and light text, text gating, and single-line selection.")
+        print("Verified light and dark text, detected line selection, crop coordinates, and weak-match rejection.")
     }
 
     private static func makeScreenshot(_ lines: [String], face: String, darkBackground: Bool, at url: URL) {

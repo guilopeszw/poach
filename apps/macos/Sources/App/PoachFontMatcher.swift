@@ -21,6 +21,14 @@ struct PoachFontMatch: Codable, Equatable, Identifiable, Sendable {
 }
 
 enum PoachFontMatcher {
+    // Calibrated with normal, small, low-contrast, and visibly distorted UI text.
+    private static let maximumMatchDistance = 0.22
+
+    struct TextLine: Equatable, Sendable {
+        let text: String
+        let bounds: CGRect
+    }
+
     struct Result: Sendable {
         let original: CGImage
         let text: String
@@ -36,22 +44,31 @@ enum PoachFontMatcher {
             switch self {
             case .noText: "Select a clear line of text with a little space around it."
             case .multipleLines: "Select one line of text at a time."
-            case .noMatch: "Poach couldn’t find a close match among your installed fonts."
+            case .noMatch: "No close match among installed fonts. Try a larger, clearer line of text."
             }
         }
     }
 
-    static func containsReadableText(in imageURL: URL) -> Bool {
+    static func detectTextLines(in imageURL: URL) -> [TextLine] {
         guard let image = loadImage(at: imageURL, maxSide: 3_072),
-              let lines = try? recognizeText(in: image) else { return false }
-        return lines.contains { line in
-            let text = line.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.count >= 2 && text.rangeOfCharacter(from: .alphanumerics) != nil
+              let observations = try? recognizeText(in: image) else { return [] }
+        let imageBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+        return observations.compactMap { observation -> TextLine? in
+            guard let text = recognizedText(in: observation), text.count >= 2,
+                  text.rangeOfCharacter(from: .alphanumerics) != nil else { return nil }
+            let box = observation.boundingBox
+            let bounds = CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+            let padded = bounds.insetBy(dx: -2 / CGFloat(image.width), dy: -2 / CGFloat(image.height))
+                .intersection(imageBounds)
+            guard !padded.isEmpty else { return nil }
+            return TextLine(text: text, bounds: padded)
         }
+        .sorted { $0.bounds.midY < $1.bounds.midY }
     }
 
     // The selection uses normalized, top-left coordinates in the displayed image.
-    static func match(imageURL: URL, selection: CGRect) throws -> Result {
+    static func match(imageURL: URL, selection: CGRect, detectedText: String? = nil,
+                      installedFontNames: [String]? = nil) throws -> Result {
         guard let image = loadImage(at: imageURL, maxSide: 4_096) else { throw Failure.noText }
         let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let rect = CGRect(x: selection.minX * bounds.width, y: selection.minY * bounds.height,
@@ -61,16 +78,21 @@ enum PoachFontMatcher {
             throw Failure.noText
         }
 
-        let lines = try recognizeText(in: crop)
-        guard !lines.isEmpty else { throw Failure.noText }
-        guard lines.count == 1 else { throw Failure.multipleLines }
-        let text = lines[0].string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text: String
+        if let detectedText {
+            text = detectedText
+        } else {
+            let lines = try recognizeText(in: crop).compactMap(recognizedText(in:))
+            guard !lines.isEmpty else { throw Failure.noText }
+            guard lines.count == 1 else { throw Failure.multipleLines }
+            text = lines[0]
+        }
         guard (2...96).contains(text.count), let reference = Mask(image: crop) else { throw Failure.noText }
 
         // Use the actual crop after clipping and rounding to image pixels.
         let region = PoachFontMatch.Region(x: rect.minX / bounds.width, y: rect.minY / bounds.height,
                                            width: rect.width / bounds.width, height: rect.height / bounds.height)
-        let names = CTFontManagerCopyAvailablePostScriptNames() as? [String] ?? []
+        let names = installedFontNames ?? (CTFontManagerCopyAvailablePostScriptNames() as? [String] ?? [])
         var bestByFamily: [String: (match: PoachFontMatch, error: Double)] = [:]
         for name in names where !name.hasPrefix(".") {
             try Task.checkCancellation()
@@ -89,6 +111,7 @@ enum PoachFontMatcher {
                   }),
                   let rendered = render(line), let candidate = Mask(image: rendered) else { continue }
             let error = reference.distance(to: candidate)
+            guard error <= maximumMatchDistance else { continue }
             let family = CTFontCopyFamilyName(font) as String
             if error < (bestByFamily[family]?.error ?? .infinity) {
                 let face = (CTFontCopyName(font, kCTFontStyleNameKey) as String?) ?? name
@@ -113,12 +136,16 @@ enum PoachFontMatcher {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
-    private static func recognizeText(in image: CGImage) throws -> [VNRecognizedText] {
+    private static func recognizedText(in observation: VNRecognizedTextObservation) -> String? {
+        observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func recognizeText(in image: CGImage) throws -> [VNRecognizedTextObservation] {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         try VNImageRequestHandler(cgImage: image).perform([request])
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first }
+        return request.results ?? []
     }
 
     private static func render(_ line: CTLine) -> CGImage? {

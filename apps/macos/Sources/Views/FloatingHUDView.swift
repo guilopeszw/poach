@@ -42,9 +42,13 @@ struct FloatingHUDView: View {
     var onSaveFavorite: ((String, String, [InteractionAnnotation], PoachBrowserEvidence?, PoachFontMatch?) throws -> UUID)?
     @State private var browserEvidence: PoachBrowserEvidence?
     @State private var showingTypography = false
-    @State private var imageHasReadableText = false
+    @State private var screenshotTextLines: [PoachFontMatcher.TextLine] = []
     @State private var selectingFont = false
-    @State private var fontCrop: CGRect?
+    @State private var fontSelection: FontSelection?
+    private struct FontSelection: Equatable {
+        let crop: CGRect
+        let detectedText: String?
+    }
     @State private var fontResult: PoachFontMatcher.Result?
     @State private var fontMatch: PoachFontMatch?
     @State private var fontSample = ""
@@ -76,7 +80,7 @@ struct FloatingHUDView: View {
                 } else if let image = NSImage(contentsOf: sourceURL) {
                     Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
                     if selectingFont {
-                        ScreenshotFontSelection(imageSize: image.size, onSelect: beginFontMatch)
+                        ScreenshotFontSelection(imageSize: image.size, onSelect: { beginFontMatch($0) })
                     }
                 }
             }
@@ -111,7 +115,7 @@ struct FloatingHUDView: View {
             }
 
             if let browserEvidence { typographySection(browserEvidence) }
-            if !isVideo && imageHasReadableText { screenshotTypography }
+            if !isVideo && !screenshotTextLines.isEmpty { screenshotTypography }
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("Change notes (optional)").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
@@ -253,15 +257,15 @@ struct FloatingHUDView: View {
             guard !isVideo else { return }
             let url = sourceURL
             let scan = Task.detached(priority: .utility) {
-                PoachFontMatcher.containsReadableText(in: url)
+                PoachFontMatcher.detectTextLines(in: url)
             }
-            let foundText = await withTaskCancellationHandler { await scan.value } onCancel: { scan.cancel() }
+            let lines = await withTaskCancellationHandler { await scan.value } onCancel: { scan.cancel() }
             guard !Task.isCancelled else { return }
-            imageHasReadableText = foundText
+            screenshotTextLines = lines
         }
-        .task(id: fontCrop) {
-            guard let crop = fontCrop else { return }
-            await matchScreenshotFont(in: crop)
+        .task(id: fontSelection) {
+            guard let selection = fontSelection else { return }
+            await matchScreenshotFont(selection)
         }
         .onAppear(perform: refreshChromeEvidence)
         .onChange(of: PoachChromeBridge.shared.revision) { refreshChromeEvidence() }
@@ -544,12 +548,18 @@ struct FloatingHUDView: View {
                 if selectingFont {
                     Text("Drag over one line of text.").font(.caption).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
-                    Button("Use whole image") {
-                        beginFontMatch(CGRect(x: 0, y: 0, width: 1, height: 1))
+                    Menu("Choose text line") {
+                        ForEach(Array(screenshotTextLines.enumerated()), id: \.offset) { index, line in
+                            Button(line.text) {
+                                beginFontMatch(line.bounds, detectedText: line.text)
+                            }
+                            .accessibilityLabel("Line \(index + 1): \(line.text)")
+                        }
                     }
+                    .fixedSize()
                     Button("Cancel") { selectingFont = false }
                         .keyboardShortcut(.cancelAction)
-                } else if fontCrop != nil {
+                } else if fontSelection != nil {
                     ProgressView().controlSize(.small)
                     Text("Matching fonts…").font(.caption).foregroundStyle(.secondary)
                 } else {
@@ -623,15 +633,15 @@ struct FloatingHUDView: View {
         selectingFont = true
     }
 
-    private func beginFontMatch(_ crop: CGRect) {
+    private func beginFontMatch(_ crop: CGRect, detectedText: String? = nil) {
         selectingFont = false
-        fontCrop = crop
+        fontSelection = FontSelection(crop: crop, detectedText: detectedText)
     }
 
-    private func matchScreenshotFont(in crop: CGRect) async {
+    private func matchScreenshotFont(_ selection: FontSelection) async {
         let url = sourceURL
         let job = Task.detached(priority: .userInitiated) {
-            try PoachFontMatcher.match(imageURL: url, selection: crop)
+            try PoachFontMatcher.match(imageURL: url, selection: selection.crop, detectedText: selection.detectedText)
         }
         do {
             let result = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
@@ -645,7 +655,7 @@ struct FloatingHUDView: View {
             fontError = (error as? PoachFontMatcher.Failure)?.localizedDescription
                 ?? "Poach couldn’t read the selected text."
         }
-        fontCrop = nil
+        fontSelection = nil
     }
 
     private func refreshChromeEvidence() {
