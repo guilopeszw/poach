@@ -150,9 +150,9 @@ From the project root, run `python3 -m http.server 8741 --bind 127.0.0.1 --direc
 
 ## Chrome companion preview
 
-1. From this checkout, run `bash scripts/build-macos-app.sh`, then open `outputs/Poach.app`. Open **Set up the Chrome companion** in Welcome or Settings.
+1. From this checkout, run `bash scripts/build-macos-app.sh`, then open `outputs/Poach.app`. Click **Next** in Welcome to reach the optional Chrome step, or open **Set up the Chrome companion** in Settings. **Skip for now** opens Capture.
 2. In the Chrome profile you want to use, open `chrome://extensions`. Turn on **Developer mode**, choose **Load unpacked**, and press Command–Shift–G. Paste the path from **Copy extension folder path** in Poach and choose that folder. When running a standalone Swift build, select this checkout’s `apps/chrome` folder instead.
-3. Copy the pairing code from Poach. Open the Poach extension from the toolbar or Chrome’s **Extensions** menu, paste the code, and click **Connect to Poach**. Then open the [local dropzone benchmark](#local-dropzone-benchmark) or another HTTP or HTTPS page.
+3. Copy the pairing code from Poach. Open the Poach extension from the toolbar or Chrome’s **Extensions** menu, paste the code, and click **Connect to Poach**. The extension briefly shows **Connected**, then Poach opens **Capture**. Open the [local dropzone benchmark](#local-dropzone-benchmark) or another HTTP or HTTPS page.
 
 To capture the upload and rejection in one handoff:
 
