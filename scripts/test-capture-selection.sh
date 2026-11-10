@@ -7,6 +7,7 @@ trap 'rm -f "$binary"' EXIT
 
 swiftc \
   "$repo_root/apps/macos/Sources/Capture/CaptureTimer.swift" \
+  "$repo_root/apps/macos/Sources/Capture/CaptureTargetGeometry.swift" \
   "$repo_root/apps/macos/Tests/CaptureSelectionTests/CaptureSelectionTests.swift" \
   -o "$binary"
 "$binary"
