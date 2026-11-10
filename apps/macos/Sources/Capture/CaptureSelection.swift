@@ -275,18 +275,6 @@ private struct CaptureSelectionView: View {
         }
     }
 
-    private var title: String {
-        switch state.mode {
-        case .selectedPortion:
-            if dragSelection == nil { return "Drag to select an area" }
-            return state.screenshot ? "Ready to take a screenshot" : "Ready to record"
-        case .fullScreen:
-            return state.screenshot ? "Capture this screen" : "Record this screen"
-        case .window:
-            return state.windowTarget?.spokenName ?? (state.screenshot ? "Click a window to capture" : "Click a window to record")
-        }
-    }
-
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottom) {
@@ -314,16 +302,15 @@ private struct CaptureSelectionView: View {
                 .accessibilityValue(state.targetName ?? "None")
                 .accessibilityHint(state.mode == .selectedPortion ? "Drag to select an area" : "Press Tab to choose the next target")
 
-                CaptureSelectionControls(
-                    title: title,
+                CapturePill(
+                    phase: .selecting(canStart: canStart),
                     screenshot: state.screenshot,
-                    canStart: canStart,
                     timerExpanded: $state.timerExpanded,
-                    onStart: start,
+                    onPrimary: start,
                     onCancel: state.cancel
                 )
-                .padding(.bottom, 26)
-                .padding(.horizontal, 18)
+                .padding(.bottom, CapturePillLayout.bottomInset)
+                .padding(.horizontal, CapturePillLayout.sideInset)
                 .frame(maxWidth: .infinity, alignment: UserDefaults.standard.string(forKey: "windowEdge") == "left" ? .leading : .trailing)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -379,90 +366,5 @@ private struct CaptureSelectionView: View {
 
     private func clamped(_ point: CGPoint, to size: CGSize) -> CGPoint {
         CGPoint(x: min(max(point.x, 0), size.width), y: min(max(point.y, 0), size.height))
-    }
-}
-
-/// The white selection panel: ⏱ · ● · ✕ (⏱ · 📷 · ✕ for screenshots).
-private struct CaptureSelectionControls: View {
-    let title: String
-    let screenshot: Bool
-    let canStart: Bool
-    @Binding var timerExpanded: Bool
-    let onStart: () -> Void
-    let onCancel: () -> Void
-    @AppStorage(PoachCaptureTimer.storageKey) private var storedSeconds = PoachCaptureTimer.off.rawValue
-
-    private var timer: PoachCaptureTimer { PoachCaptureTimer(storedSeconds: storedSeconds) }
-
-    private var startHelp: String {
-        switch (screenshot, timer) {
-        case (true, .off): "Take screenshot (Return)"
-        case (true, _): "Take a screenshot after \(timer.spokenTitle) (Return)"
-        case (false, .off): "Start recording (Return)"
-        case (false, _): "Start the \(timer.spokenTitle) countdown (Return)"
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.horizontal, 14)
-
-            HStack(spacing: 10) {
-                PoachCaptureTimerControl(isExpanded: $timerExpanded)
-
-                if !timerExpanded {
-                    Button(action: onStart) {
-                        Image(systemName: screenshot ? "camera" : "circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 32)
-                            .background(screenshot ? PoachPalette.ink : Color.red, in: RoundedRectangle(cornerRadius: 9))
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canStart)
-                    .accessibilityLabel(screenshot ? "Take screenshot" : "Start recording")
-                    .help(startHelp)
-                    .keyboardShortcut(.defaultAction)
-
-                    Button(action: onCancel) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(width: 44, height: 32)
-                            .background(Color(white: 0.93), in: RoundedRectangle(cornerRadius: 9))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel("Cancel selection")
-                    .help("Cancel (Esc)")
-                }
-            }
-        }
-        .frame(width: 262, height: 116)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.black.opacity(0.15), lineWidth: 1)
-                .allowsHitTesting(false)
-        }
-        .background {
-            // Space starts like Return and T toggles the timer; both only while this overlay is key.
-            Group {
-                Button("", action: onStart)
-                    .keyboardShortcut(.space, modifiers: [])
-                    .disabled(!canStart || timerExpanded)
-                Button("") { timerExpanded.toggle() }
-                    .keyboardShortcut("t", modifiers: [])
-            }
-            .opacity(0)
-            .accessibilityHidden(true)
-        }
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
     }
 }

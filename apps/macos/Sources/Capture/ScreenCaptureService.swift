@@ -91,7 +91,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         -> (filter: SCContentFilter, selectedRegion: SelectedRegion?) {
         let target = try await CaptureSelectionWindowController.shared.select(mode: mode, screenshot: screenshot)
         if let (outline, screen) = Self.outline(for: target) {
-            try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen)
+            try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen, screenshot: screenshot)
         }
         let content: SCShareableContent
         do {
