@@ -91,15 +91,16 @@ struct FloatingHUDView: View {
             }
 
             VStack(alignment: .leading, spacing: 9) {
-                Text("Instructions").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                Text("Change notes (optional)").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 TextEditor(text: $context)
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
                     .font(.system(size: 13))
                     .scrollContentBackground(.hidden)
                     .frame(height: 64)
                     .padding(6)
                     .overlay(alignment: .topLeading) {
                         if context.isEmpty {
-                            Text("Describe what to recreate or change.")
+                            Text("Describe any changes you’d like.")
                                 .font(.system(size: 13))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 11)
@@ -114,7 +115,7 @@ struct FloatingHUDView: View {
                             .strokeBorder(PoachPalette.outline, lineWidth: 1)
                             .allowsHitTesting(false)
                     }
-                    .accessibilityLabel("Instructions")
+                    .accessibilityLabel("Change notes (optional)")
                     .onChange(of: context) { shareStatus = "Changes have not been shared yet." }
             }
 
