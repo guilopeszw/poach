@@ -112,8 +112,9 @@ struct PoachApp: App {
                 .background(HomeWindowAnchor(onAttach: pendingOnboardingAnimation))
                 .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
                 .onAppear {
-                    _ = captureHotKey.register {
-                        if isRecording { Task { await stopRecording() } }
+                    hotKeyAvailable = captureHotKey.register {
+                        if CaptureCountdownController.shared.isRunning { CaptureCountdownController.shared.cancel() }
+                        else if isRecording { Task { await stopRecording() } }
                         else if !isWorking {
                             captureMode = .selectedPortion
                             startRecording()
@@ -289,10 +290,9 @@ struct PoachApp: App {
         Task {
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.requiresNewerMacOS }
-                let service = makeCaptureService()
-                try await service.startRecording(mode: captureMode) {
-                    try await recordingWindow.countDown()
-                }
+                let service = ScreenCaptureService()
+                captureServiceStorage = service
+                try await service.startRecording(mode: captureMode)
 
                 NSApp.unhide(nil)
                 NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
@@ -425,29 +425,6 @@ private extension ScreenCaptureError {
 private final class RecordingStatusWindowController {
     private var panel: NSPanel?
     private var stopAction: (() -> Void)?
-
-    func countDown() async throws {
-        var cancelled = false
-        let countdownPanel = makePanel()
-        countdownPanel.setContentSize(NSSize(width: 120, height: 120))
-        positionWindow(countdownPanel, near: NSApp.windows.first { $0.title == "Poach" })
-        NSApp.unhide(nil)
-        NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
-        defer { countdownPanel.orderOut(nil) }
-        for count in stride(from: 3, through: 1, by: -1) {
-            countdownPanel.contentView = NSHostingView(rootView:
-                Button { cancelled = true } label: { PoachCountdown(count: count) }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityHint("Cancel recording")
-                    .help("Cancel countdown")
-                .preferredColorScheme(.light)
-            )
-            countdownPanel.makeKeyAndOrderFront(nil)
-            try await Task.sleep(for: .seconds(1))
-            if cancelled { throw ScreenCaptureError.selectionCancelled }
-        }
-    }
 
     func show(elapsedSeconds: Int, onStop: @escaping () -> Void) {
         stopAction = onStop
