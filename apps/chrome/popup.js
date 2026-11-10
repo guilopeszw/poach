@@ -2,6 +2,9 @@ const action = document.querySelector("#action");
 const cancel = document.querySelector("#cancel");
 const status = document.querySelector("#status");
 const pairing = document.querySelector("#pairing");
+const paired = document.querySelector("#paired");
+const pairedDetail = document.querySelector("#paired-detail");
+const openCapture = document.querySelector("#open-capture");
 const reconnect = document.querySelector("#reconnect");
 const code = document.querySelector("#code");
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -17,13 +20,19 @@ function bridge(command, details = {}) {
 
 function showPairing(detail) {
   pairing.hidden = false;
+  paired.hidden = true;
   action.hidden = cancel.hidden = reconnect.hidden = true;
-  status.textContent = detail ?? "In Poach, open Chrome setup from Welcome or Settings and copy the pairing code.";
+  status.hidden = !detail;
+  status.toggleAttribute("data-error", Boolean(detail));
+  status.textContent = detail ?? "";
 }
 
 function render(next, detail) {
   phase = next;
   pairing.hidden = true;
+  paired.hidden = true;
+  status.hidden = false;
+  status.removeAttribute("data-error");
   action.hidden = false;
   action.disabled = next === "unavailable";
   reconnect.hidden = false;
@@ -55,15 +64,35 @@ async function inspectTab() {
   render(current.phase);
 }
 
+async function bringPoachForward() {
+  openCapture.disabled = true;
+  pairedDetail.textContent = "Opening Capture in Poach…";
+  const result = await bridge("openCapture").catch(() => ({}));
+  if (result.ok) {
+    window.close();
+  } else {
+    pairedDetail.textContent = "Open Poach to continue in Capture.";
+    openCapture.disabled = false;
+    openCapture.hidden = false;
+  }
+}
+
+openCapture.addEventListener("click", bringPoachForward);
+
 pairing.addEventListener("submit", async event => {
   event.preventDefault();
   const submit = pairing.querySelector("button");
   submit.disabled = true;
+  submit.textContent = "Connecting…";
   const result = await bridge("pair", { code: code.value }).catch(() => ({ error: "Couldn’t connect to Poach." }));
   submit.disabled = false;
+  submit.textContent = "Connect to Poach";
   if (result.ok) {
     code.value = "";
-    await inspectTab();
+    pairing.hidden = status.hidden = true;
+    paired.hidden = false;
+    await new Promise(resolve => setTimeout(resolve, 450));
+    await bringPoachForward();
   } else {
     showPairing(result.error);
   }

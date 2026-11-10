@@ -30,6 +30,7 @@ async function handle(message) {
   const { pairingCode } = await chrome.storage.local.get("pairingCode");
   if (!pairingCode) return { needsPairing: true, error: "Pair with Poach first." };
   if (message.poachBridge === "ping") return send("/pair", pairingCode);
+  if (message.poachBridge === "openCapture") return send("/open-capture", pairingCode, { method: "POST" });
   const body = JSON.stringify(message.evidence);
   if (new Blob([body]).size > 256 * 1024) return { error: "This capture exceeds Poach’s evidence limit." };
   return send("/capture", pairingCode, {
@@ -40,7 +41,7 @@ async function handle(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (sender.id !== chrome.runtime.id || !["pair", "ping", "capture"].includes(message?.poachBridge)) return;
+  if (sender.id !== chrome.runtime.id || !["pair", "ping", "openCapture", "capture"].includes(message?.poachBridge)) return;
   if (message.poachBridge === "capture" && !message.evidence) return;
   const key = message.evidence?.startedAtEpochMs ?? 0;
   const pending = queues.get(key);

@@ -5,22 +5,44 @@
   background: #f7f7f5;
 }
 
-body { width: 284px; margin: 0; }
+body { width: 308px; margin: 0; }
 main { padding: 16px; }
-header { display: flex; align-items: center; gap: 9px; }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 header img { object-fit: contain; }
-h1, p { margin: 0; }
+h1, h2, p { margin: 0; }
 h1 { font-size: 16px; line-height: 1.2; letter-spacing: -.25px; }
-header p, #status, label { color: #565653; }
+h2 { font-size: 16px; line-height: 1.25; letter-spacing: -.2px; }
+header p, #status, label, .setup-help, #paired-detail { color: #565653; }
 header p { font-size: 12px; }
 #status { margin: 13px 0 12px; }
-form { display: grid; gap: 8px; }
+form, #paired {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #deded9;
+  border-radius: 13px;
+  background: #fff;
+}
+.setup-help { margin-bottom: 4px; }
+#status[data-error] { color: #952f24; }
+#paired { min-height: 156px; align-content: center; justify-items: center; text-align: center; }
+#paired-detail { margin-top: 4px; }
+.success-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #28634e;
+  background: #e4f1e9;
+}
+#open-capture { margin-top: 4px; }
 label { font-size: 12px; font-weight: 600; }
 
 button, input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 34px;
+  min-height: 36px;
   padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: 8px;

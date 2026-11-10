@@ -15,10 +15,22 @@
     </header>
     <p id="status" role="status">Connecting to Poach…</p>
     <form id="pairing" hidden>
+      <h2>Connect Chrome</h2>
+      <p class="setup-help">Copy a pairing code from the Poach Mac app and paste it below.</p>
       <label for="code">Pairing code</label>
-      <input id="code" autocomplete="off" spellcheck="false" placeholder="Paste from Poach" required>
+      <input id="code" autocomplete="off" spellcheck="false" aria-describedby="status" placeholder="Paste from Poach" required>
       <button type="submit">Connect to Poach</button>
     </form>
+    <section id="paired" hidden>
+      <div class="success-mark" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>
+      </div>
+      <div role="status">
+        <h2>Connected</h2>
+        <p id="paired-detail">Opening Capture in Poach…</p>
+      </div>
+      <button id="open-capture" type="button" hidden>Open Capture</button>
+    </section>
     <button id="action" type="button" disabled>Choose a component</button>
     <footer>
       <button id="cancel" type="button" hidden>Discard</button>

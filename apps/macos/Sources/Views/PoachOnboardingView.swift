@@ -3,30 +3,44 @@ import SwiftUI
 
 struct PoachOnboardingView: View {
     let onContinue: () -> Void
-    @State private var showsChromeSetup = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsChromeStep = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            hero
+        VStack(alignment: .leading, spacing: 18) {
+            Text(showsChromeStep ? "Step 2 of 2 · Optional" : "Step 1 of 2")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
 
-            featureRows
-
-            Button {
-                showsChromeSetup = true
-            } label: {
-                Label("Set up the Chrome companion", systemImage: "puzzlepiece.extension")
-                    .font(.system(size: 13, weight: .medium))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ZStack(alignment: .topLeading) {
+                if showsChromeStep {
+                    PoachChromeSetupContent()
+                        .transition(slide(from: 18))
+                } else {
+                    VStack(spacing: 20) {
+                        hero
+                        featureRows
+                    }
+                    .transition(slide(from: -18))
+                }
             }
-            .buttonStyle(.link)
-            .sheet(isPresented: $showsChromeSetup) { PoachChromeSetupView() }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: showsChromeStep)
 
-            Button(action: onContinue) {
-                Text("Continue")
-                    .frame(maxWidth: .infinity)
+            HStack {
+                if showsChromeStep {
+                    Button("Back") { showsChromeStep = false }
+                        .buttonStyle(PoachActionStyle())
+                }
+                Spacer()
+                if showsChromeStep {
+                    Button("Skip for now", action: onContinue)
+                        .buttonStyle(PoachActionStyle())
+                } else {
+                    Button("Next") { showsChromeStep = true }
+                        .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
+                        .keyboardShortcut(.defaultAction)
+                }
             }
-            .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
-            .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 32)
         .padding(.top, 32)
@@ -45,6 +59,11 @@ struct PoachOnboardingView: View {
         }
         .background(PoachPalette.canvas)
         .preferredColorScheme(.light)
+    }
+
+    private func slide(from offset: CGFloat) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .asymmetric(insertion: .offset(x: offset).combined(with: .opacity), removal: .opacity)
     }
 
     private var hero: some View {

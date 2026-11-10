@@ -16,6 +16,7 @@ struct PoachApp: App {
     @State private var captureMode = PoachCaptureMode(rawValue: UserDefaults.standard.string(forKey: "defaultCaptureMode") ?? "") ?? .selectedPortion
     @State private var captureType = PoachCaptureType.record
     @State private var homeTab = PoachHomeView.Tab.capture
+    @State private var handledChromeCaptureRequest = 0
     @AppStorage("defaultCaptureMode") private var defaultMode = PoachCaptureMode.selectedPortion.rawValue
     @AppStorage("hasShownOnboarding") private var hasShownOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     @State private var shouldShowOnboarding = !UserDefaults.standard.bool(forKey: "hasShownOnboarding")
@@ -114,6 +115,15 @@ struct PoachApp: App {
                     // Keep the welcome content in place until AppKit finishes closing it.
                     DispatchQueue.main.async { shouldShowOnboarding = false }
                 }
+            }
+        }
+        .onChange(of: PoachChromeBridge.shared.captureRequest, initial: true) { _, request in
+            guard request != handledChromeCaptureRequest else { return }
+            handledChromeCaptureRequest = request
+            homeTab = .capture
+            if shouldShowOnboarding {
+                hasShownOnboarding = true
+                shouldShowOnboarding = false
             }
         }
     }
@@ -517,6 +527,15 @@ private final class PoachAppDelegate: NSObject, NSApplicationDelegate, Observabl
     private var appearanceObservation: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        PoachChromeBridge.shared.openCapture = {
+            NSApp.unhide(nil)
+            if let window = NSApp.windows.first(where: { $0.title == "Poach" && $0.isVisible }) {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return true
+            }
+            return NSWorkspace.shared.open(Bundle.main.bundleURL)
+        }
         PoachChromeBridge.shared.startIfPaired()
         appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.initial, .new]) { _, _ in
             Task { @MainActor [weak self] in self?.refreshIcon() }

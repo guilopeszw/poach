@@ -7,6 +7,8 @@ final class PoachChromeBridge {
     static let shared = PoachChromeBridge()
     private static let preference = "chromePairingCode"
     private var listener: NWListener?
+    @ObservationIgnored var openCapture: (() -> Bool)?
+    private(set) var captureRequest = 0
     private(set) var errorMessage: String?
     private var incoming: PoachBrowserEvidence?
     @ObservationIgnored private var incomingExpiry: Task<Void, Never>?
@@ -109,6 +111,11 @@ final class PoachChromeBridge {
         }
         guard let code, headers["authorization"] == "Bearer \(code)" else { return "401 Unauthorized" }
         if lines.first == "GET /v1/pair HTTP/1.1" { return "204 No Content" }
+        if lines.first == "POST /v1/open-capture HTTP/1.1" {
+            guard openCapture?() == true else { return "503 Service Unavailable" }
+            captureRequest += 1
+            return "204 No Content"
+        }
         guard lines.first == "POST /v1/capture HTTP/1.1",
               headers["content-type"] == "application/json",
               let length = headers["content-length"].flatMap(Int.init),
