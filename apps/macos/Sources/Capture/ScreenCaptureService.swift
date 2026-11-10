@@ -72,10 +72,12 @@ struct ScreenCaptureRecording {
 @available(macOS 15.0, *)
 @MainActor
 final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContentSharingPickerObserver {
+    private static let poachBundleID = Bundle.main.bundleIdentifier ?? "dev.poach.app"
     private var stream: SCStream?
     private var outputURL: URL?
     private var pickerContinuation: CheckedContinuation<ContentFilterBox, Error>?
     private var activePicker: SCContentSharingPicker?
+    var onPickerStateChange: ((Bool) -> Void)?
     private var finishContinuation: CheckedContinuation<Void, Error>?
     private var didFinish = false
     private var recordingError: Error?
@@ -99,15 +101,11 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
             guard let display = content.displays.first(where: { $0.displayID == region.displayID }) else {
                 throw ScreenCaptureError.noDisplay
             }
-            let poachApplications = content.applications.filter {
-                $0.processID == ProcessInfo.processInfo.processIdentifier || $0.bundleIdentifier == Bundle.main.bundleIdentifier
-            }
-            guard !poachApplications.isEmpty else { throw ScreenCaptureError.selectionFailed("Poach could not exclude its windows from this display.") }
-            filter = SCContentFilter(display: display, excludingApplications: poachApplications, exceptingWindows: [])
+            filter = try Self.displayFilter(for: display, in: content)
             selectedRegion = region
         } else {
             if mode == .window {
-                filter = try await chooseContent(for: mode).filter
+                filter = try await chooseWindowFilter(screenshot: screenshot)
             } else {
                 let display: SCDisplay
                 let content: SCShareableContent
@@ -121,13 +119,29 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
                     content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
                     display = try chooseDisplay(from: content.displays)
                 }
-                let excluded = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
-                guard !excluded.isEmpty else { throw ScreenCaptureError.selectionFailed("Poach could not exclude its windows from this display.") }
-                filter = SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
+                filter = try Self.displayFilter(for: display, in: content)
             }
             selectedRegion = nil
         }
         return (filter, selectedRegion)
+    }
+
+    private static var poachWindowNumbers: [Int] {
+        NSApp.windows.map(\.windowNumber).filter { $0 > 0 }
+    }
+
+    private static func isPoach(_ application: SCRunningApplication?) -> Bool {
+        guard let application else { return false }
+        return application.processID == ProcessInfo.processInfo.processIdentifier
+            || application.bundleIdentifier == poachBundleID
+    }
+
+    private static func displayFilter(for display: SCDisplay, in content: SCShareableContent) throws -> SCContentFilter {
+        let excluded = content.applications.filter { isPoach($0) }
+        guard excluded.contains(where: { $0.processID == ProcessInfo.processInfo.processIdentifier }) else {
+            throw ScreenCaptureError.selectionFailed("Poach could not exclude its windows from this display.")
+        }
+        return SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
     }
 
     func captureScreenshot(mode: PoachCaptureMode) async throws -> URL {
@@ -267,6 +281,43 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         }
     }
 
+    private func chooseWindowFilter(screenshot: Bool) async throws -> SCContentFilter {
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        } catch where Self.isPermissionDenied(error) {
+            // The system picker can grant access to one window without access to the full list.
+            let picked = try await chooseContent(for: .window).filter
+            guard picked.style == .window else {
+                throw ScreenCaptureError.selectionFailed("Choose an app window to capture.")
+            }
+            if #available(macOS 15.2, *) {
+                guard picked.includedWindows.count == 1, let window = picked.includedWindows.first,
+                      !Self.isPoach(window.owningApplication),
+                      !Self.poachWindowNumbers.contains(Int(window.windowID)) else {
+                    throw ScreenCaptureError.selectionFailed("Choose a window from another app to capture.")
+                }
+            }
+            return picked
+        }
+
+        let poachWindowIDs = Set(Self.poachWindowNumbers)
+        let windows = content.windows.compactMap { window -> CaptureWindowChoice? in
+            guard window.windowLayer == 0, let app = window.owningApplication, !Self.isPoach(app),
+                  !poachWindowIDs.contains(Int(window.windowID)) else { return nil }
+            return CaptureWindowChoice(window: window, app: app)
+        }.sorted { lhs, rhs in
+            let order = lhs.label.localizedStandardCompare(rhs.label)
+            return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+        }
+        guard !windows.isEmpty else {
+            throw ScreenCaptureError.selectionFailed("Open a window from another app and try again.")
+        }
+
+        let selected = try await WindowCaptureChooser.choose(from: windows, screenshot: screenshot)
+        return SCContentFilter(desktopIndependentWindow: selected.window)
+    }
+
     private func chooseDisplay(from displays: [SCDisplay]) throws -> SCDisplay {
         guard let first = displays.first else { throw ScreenCaptureError.noDisplay }
         guard displays.count > 1 else { return first }
@@ -291,13 +342,15 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
             pickerContinuation = continuation
             var configuration = SCContentSharingPickerConfiguration()
             configuration.allowedPickerModes = mode == .window ? .singleWindow : .singleDisplay
-            configuration.excludedBundleIDs = [Bundle.main.bundleIdentifier ?? "dev.poach.app"]
+            configuration.excludedBundleIDs = [Self.poachBundleID]
+            configuration.excludedWindowIDs = Self.poachWindowNumbers
             let picker = SCContentSharingPicker.shared
             activePicker = picker
             picker.defaultConfiguration = configuration
             picker.add(self)
             picker.isActive = true
-            picker.present()
+            onPickerStateChange?(true)
+            picker.present(using: mode == .window ? .window : .display)
         }
     }
 
@@ -347,14 +400,17 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     }
 
     private func resolvePicker(_ result: Result<ContentFilterBox, Error>) {
+        guard let continuation = pickerContinuation else { return }
+        pickerContinuation = nil
         activePicker?.remove(self)
         activePicker?.isActive = false
         activePicker = nil
-        switch result {
-        case .success(let filter): pickerContinuation?.resume(returning: filter)
-        case .failure(let error): pickerContinuation?.resume(throwing: error)
-        }
-        pickerContinuation = nil
+        onPickerStateChange?(false)
+        continuation.resume(with: result)
+    }
+
+    func cancelPickerSelection() {
+        resolvePicker(.failure(ScreenCaptureError.selectionCancelled))
     }
 
     private func waitForRecordingFinish() async throws {
@@ -648,7 +704,7 @@ private struct RegionSelectionView: View {
                 .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
                 .padding(.bottom, 26)
                 .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity, alignment: UserDefaults.standard.string(forKey: "windowEdge") == "left" ? .leading : .trailing)
+                .frame(maxWidth: .infinity)
                 .allowsHitTesting(true)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)

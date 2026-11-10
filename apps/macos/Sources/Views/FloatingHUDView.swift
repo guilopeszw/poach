@@ -261,13 +261,10 @@ struct FloatingHUDView: View {
               panel.contentRect(forFrameRect: panel.frame).size != size else { return }
         let frameSize = panel.frameRect(forContentRect: CGRect(origin: .zero, size: size)).size
         var frame = panel.frame
-        if UserDefaults.standard.string(forKey: "windowEdge") != "left" {
-            frame.origin.x = frame.maxX - frameSize.width
-        }
-        frame.origin.y += (frame.height - frameSize.height) / 2
+        frame.origin.y = frame.maxY - frameSize.height
         frame.size = frameSize
         if let visible = panel.screen?.visibleFrame {
-            frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+            frame = fitWindowFrame(frame, in: visible)
         }
         panel.setFrame(frame, display: true)
     }

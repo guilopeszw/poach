@@ -87,7 +87,6 @@ struct PoachSettingsView: View {
         catch { usage = nil; storageError = error.localizedDescription }
     }
 
-    @AppStorage("windowEdge") private var edge = "right"
     @AppStorage("defaultCaptureMode") private var defaultMode = PoachCaptureMode.selectedPortion.rawValue
 
     var body: some View {
@@ -95,12 +94,6 @@ struct PoachSettingsView: View {
             Text("Settings")
                 .font(.system(size: 19, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
-            HStack {
-                Text("Window edge")
-                Spacer()
-                PoachSegments(label: "Window position", selection: $edge, choices: [("left", "Left"), ("right", "Right")])
-                    .frame(width: 140)
-            }
             HStack {
                 Text("Default capture mode")
                 Spacer()
@@ -135,10 +128,5 @@ struct PoachSettingsView: View {
             if let storageError { Text(storageError).font(.caption).foregroundStyle(.secondary) }
         }
         .task(id: storageVisible && !captureBusy) { if storageVisible && !captureBusy { refreshStorage() } }
-        .onChange(of: edge) {
-            for window in NSApp.windows where window.title == "Poach" || window.title == "Poach — Implementation brief" {
-                pinToEdge(window)
-            }
-        }
     }
 }

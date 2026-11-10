@@ -22,6 +22,7 @@ struct PoachApp: App {
     @State private var isMinimizingOnboarding = false
     @State private var pendingOnboardingAnimation: (() -> Void)?
     @State private var isWorking = false
+    @State private var isChoosingCaptureSource = false
     @State private var workingTitle = "Preparing your capture…"
     @State private var isRecording = false
     @State private var loadingFile: URL?
@@ -97,15 +98,13 @@ struct PoachApp: App {
                     captureMode: $captureMode,
                     onStartRecording: startRecording,
                     onScreenshot: takeScreenshot,
+                    onCancelSelection: cancelSelectionAction,
                     onStopRecording: { Task { await stopRecording() } },
                     onLoadMedia: loadMedia,
                     onDropMedia: loadMedia(at:),
                     loadingFile: loadingFile, status: importStatus
                 )
-                .background(HomeWindowAnchor(
-                    allowsPositioning: { !isMinimizingOnboarding },
-                    onAttach: pendingOnboardingAnimation
-                ))
+                .background(HomeWindowAnchor(onAttach: pendingOnboardingAnimation))
                 .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
                 .onAppear {
                     hotKeyAvailable = captureHotKey.register {
@@ -156,12 +155,15 @@ struct PoachApp: App {
         content.addSubview(preview, positioned: .above, relativeTo: nil)
 
         let homeRect = window.frameRect(forContentRect: NSRect(origin: .zero, size: PoachHomeView.windowSize))
-        let destination = pinnedFrame(size: homeRect.size, in: screen.visibleFrame)
+        let destination = fitWindowFrame(
+            NSRect(x: window.frame.midX - homeRect.width / 2, y: window.frame.midY - homeRect.height / 2,
+                   width: homeRect.width, height: homeRect.height),
+            in: screen.visibleFrame
+        )
         pendingOnboardingAnimation = {
             pendingOnboardingAnimation = nil
             content.layoutSubtreeIfNeeded()
             window.contentMinSize = PoachHomeView.windowSize
-            window.isMovable = false
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.30
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -215,10 +217,10 @@ struct PoachApp: App {
         workingTitle = "Preparing screenshot…"
         isWorking = true
         Task {
-            defer { isWorking = false }
+            defer { isWorking = false; captureServiceStorage = nil }
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.screenshotRequiresNewerMacOS }
-                let imageURL = try await ScreenCaptureService().captureScreenshot(mode: captureMode)
+                let imageURL = try await makeCaptureService().captureScreenshot(mode: captureMode)
                 hudWindow.showPreparing("Opening screenshot", stages: InspectionStage.stillImage)
                 let result = try await PoachInspectionRunner.inspect(videoURL: imageURL) { stage in
                     hudWindow.preparation.advance(to: stage)
@@ -236,6 +238,25 @@ struct PoachApp: App {
         }
     }
 
+    @available(macOS 15.0, *)
+    private func makeCaptureService() -> ScreenCaptureService {
+        let service = ScreenCaptureService()
+        service.onPickerStateChange = { isChoosingCaptureSource = $0 }
+        captureServiceStorage = service
+        return service
+    }
+
+    private func cancelPickerSelection() {
+        if #available(macOS 15.0, *) {
+            (captureServiceStorage as? ScreenCaptureService)?.cancelPickerSelection()
+        }
+    }
+
+    private var cancelSelectionAction: (() -> Void)? {
+        guard isChoosingCaptureSource else { return nil }
+        return { cancelPickerSelection() }
+    }
+
     private func startRecording() {
         guard !isWorking, !isRecording else { return }
         Self.captureLog.notice("Capture selection requested")
@@ -244,8 +265,7 @@ struct PoachApp: App {
         Task {
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.requiresNewerMacOS }
-                let service = ScreenCaptureService()
-                captureServiceStorage = service
+                let service = makeCaptureService()
                 try await service.startRecording(mode: captureMode) {
                     try await recordingWindow.countDown()
                 }
@@ -380,7 +400,7 @@ private final class RecordingStatusWindowController {
         var cancelled = false
         let countdownPanel = makePanel()
         countdownPanel.setContentSize(NSSize(width: 120, height: 120))
-        pinToEdge(countdownPanel)
+        positionWindow(countdownPanel, near: NSApp.windows.first { $0.title == "Poach" })
         NSApp.unhide(nil)
         NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
         defer { countdownPanel.orderOut(nil) }
@@ -405,7 +425,10 @@ private final class RecordingStatusWindowController {
         panel.contentView = NSHostingView(rootView: PoachRecordingStatusView(elapsedSeconds: elapsedSeconds) { [weak self] in
             self?.stopAction?()
         })
-        pinToEdge(panel)
+        if self.panel == nil, let visible = (NSApp.windows.first { $0.title == "Poach" }?.screen ?? NSScreen.main)?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(x: visible.maxX - panel.frame.width - 16,
+                                         y: visible.maxY - panel.frame.height - 16))
+        }
         panel.orderFrontRegardless()
         self.panel = panel
     }
@@ -443,7 +466,7 @@ private final class RecordingStatusWindowController {
             backing: .buffered,
             defer: false
         )
-        panel.isMovable = false
+        panel.isMovableByWindowBackground = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isOpaque = false
@@ -524,12 +547,14 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         guard sender === panel, sender.title == "Poach — Implementation brief",
               let home = NSApp.windows.first(where: { $0.title == "Poach" }) else { return true }
         guard !returningToCapture else { return false }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return true }
+        let destination = positionedFrame(for: home, near: sender)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            home.setFrame(destination, display: false)
+            return true
+        }
 
         returningToCapture = true
-        pinToEdge(home)
         home.animationBehavior = .none
-        let destination = home.frame
         guard let content = sender.contentView, let captureContent = home.contentView,
               let editorImage = windowSnapshot(content), let captureImage = windowSnapshot(captureContent) else {
             returningToCapture = false
@@ -543,11 +568,9 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         surface.layer?.masksToBounds = true
         let capture = NSImageView(image: captureImage)
         let editor = NSImageView(image: editorImage)
-        let alignLeft = UserDefaults.standard.string(forKey: "windowEdge") == "left"
         for view in [capture, editor] {
-            view.setFrameOrigin(NSPoint(x: alignLeft ? 0 : surface.bounds.maxX - view.frame.width,
-                                        y: surface.bounds.maxY - view.frame.height))
-            view.autoresizingMask = [alignLeft ? .maxXMargin : .minXMargin, .minYMargin]
+            view.setFrameOrigin(NSPoint(x: 0, y: surface.bounds.maxY - view.frame.height))
+            view.autoresizingMask = [.maxXMargin, .minYMargin]
             surface.addSubview(view)
         }
         sender.contentView = surface
@@ -591,7 +614,7 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
             .preferredColorScheme(.light)
         )
         panel.setContentSize(NSSize(width: 660, height: 500))
-        pinToEdge(panel)
+        positionWindow(panel, near: NSApp.windows.first { $0.title == "Poach" })
         NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
@@ -606,7 +629,9 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         CaptureStorage.openPaths = [result.sourcePath] + result.keyframes.map(\.imagePath) + [original?.path].compactMap { $0 }
         let palette = result.palette.map { HUDPaletteToken(hex: $0, color: Color(hex: $0)) }
         let panel = self.panel ?? makePanel()
-        let screen = panel.screen ?? NSScreen.main
+        let anchor = self.panel ?? NSApp.windows.first { $0.title == "Poach" }
+        let anchorFrame = anchor?.frame
+        let screen = anchor?.screen ?? NSScreen.main
         let visibleSize = screen?.visibleFrame.size ?? CGSize(width: 800, height: 800)
         let contentHeight = panel.contentRect(forFrameRect: CGRect(origin: .zero, size: visibleSize)).height
         let view = FloatingHUDView(
@@ -625,7 +650,13 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         panel.title = "Poach — Implementation brief"
         panel.contentView = NSHostingView(rootView: view.id(UUID()))
         panel.setContentSize(panel.contentView?.fittingSize ?? NSSize(width: 340, height: 370))
-        pinToEdge(panel)
+        if let anchorFrame, let visible = screen?.visibleFrame {
+            var frame = panel.frame
+            frame.origin = NSPoint(x: anchorFrame.minX, y: anchorFrame.maxY - frame.height)
+            panel.setFrame(fitWindowFrame(frame, in: visible), display: false)
+        } else {
+            panel.center()
+        }
         panel.alphaValue = 0
         NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
         NSApp.activate(ignoringOtherApps: true)
@@ -656,7 +687,6 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         panel.titlebarAppearsTransparent = true
         panel.backgroundColor = NSColor(PoachPalette.canvas)
         panel.hasShadow = true
-        panel.isMovable = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.isReleasedWhenClosed = false
         return panel
@@ -714,17 +744,25 @@ private extension Color {
     }
 }
 
-@MainActor
-func pinToEdge(_ window: NSWindow) {
-    guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
-    window.isMovable = false
-    window.setFrameOrigin(pinnedFrame(size: window.frame.size, in: visible).origin)
+func fitWindowFrame(_ frame: NSRect, in visible: NSRect) -> NSRect {
+    var fitted = frame
+    fitted.origin.x = max(visible.minX, min(frame.minX, visible.maxX - frame.width))
+    fitted.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+    return fitted
 }
 
-private func pinnedFrame(size: NSSize, in visible: NSRect) -> NSRect {
-    let left = UserDefaults.standard.string(forKey: "windowEdge") == "left"
-    return NSRect(x: left ? visible.minX + 16 : max(visible.minX, visible.maxX - size.width - 16),
-                  y: max(visible.minY, visible.midY - size.height / 2), width: size.width, height: size.height)
+@MainActor
+private func positionedFrame(for window: NSWindow, near anchor: NSWindow?) -> NSRect {
+    guard let visible = (anchor?.screen ?? window.screen ?? NSScreen.main)?.visibleFrame else { return window.frame }
+    var frame = window.frame
+    frame.origin = anchor.map { NSPoint(x: $0.frame.minX, y: $0.frame.maxY - frame.height) }
+        ?? NSPoint(x: visible.midX - frame.width / 2, y: visible.midY - frame.height / 2)
+    return fitWindowFrame(frame, in: visible)
+}
+
+@MainActor
+private func positionWindow(_ window: NSWindow, near anchor: NSWindow?) {
+    window.setFrame(positionedFrame(for: window, near: anchor), display: false)
 }
 
 @MainActor
@@ -739,23 +777,20 @@ private func windowSnapshot(_ view: NSView) -> NSImage? {
 
 private struct HomeWindowAnchor: NSViewRepresentable {
     var shouldCenter: (() -> Bool)?
-    var allowsPositioning: () -> Bool = { true }
     var onAttach: (() -> Void)?
 
     final class Anchor: NSView {
         var shouldCenter: (() -> Bool)?
-        var allowsPositioning: () -> Bool = { true }
         var onAttach: (() -> Void)?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             NotificationCenter.default.removeObserver(self)
             guard let window else { return }
-            if shouldCenter != nil { window.titlebarAppearsTransparent = true }
-            for event in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification,
-                          NSWindow.didChangeScreenNotification] {
+            if shouldCenter != nil {
+                window.titlebarAppearsTransparent = true
                 NotificationCenter.default.addObserver(self, selector: #selector(realign),
-                                                       name: event, object: window)
+                                                       name: NSWindow.didResizeNotification, object: window)
             }
             realign()
         }
@@ -768,12 +803,8 @@ private struct HomeWindowAnchor: NSViewRepresentable {
                     onAttach()
                     return
                 }
-                guard self.allowsPositioning() else { return }
-                guard let shouldCenter = self.shouldCenter else {
-                    pinToEdge(window)
-                    return
-                }
-                guard shouldCenter(), let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+                guard self.shouldCenter?() == true,
+                      let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
                 window.setFrameOrigin(NSPoint(x: visible.midX - window.frame.width / 2,
                                               y: visible.midY - window.frame.height / 2))
             }
@@ -784,7 +815,6 @@ private struct HomeWindowAnchor: NSViewRepresentable {
     func makeNSView(context: Context) -> Anchor {
         let anchor = Anchor()
         anchor.shouldCenter = shouldCenter
-        anchor.allowsPositioning = allowsPositioning
         anchor.onAttach = onAttach
         return anchor
     }

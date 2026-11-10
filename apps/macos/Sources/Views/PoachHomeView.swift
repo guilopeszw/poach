@@ -19,6 +19,7 @@ struct PoachHomeView: View {
     @Binding var captureMode: PoachCaptureMode
     let onStartRecording: () -> Void
     var onScreenshot: () -> Void = {}
+    var onCancelSelection: (() -> Void)?
     let onStopRecording: () -> Void
     let onLoadMedia: () -> Void
 
@@ -37,6 +38,7 @@ struct PoachHomeView: View {
     @State private var captureType = CaptureType.record
 
     private var primaryTitle: String {
+        if onCancelSelection != nil { return "Cancel selection" }
         if isRecording { return "Stop and inspect · \(clock(elapsedSeconds)) / 0:30" }
         if isWorking && loadingFile == nil { return workingTitle }
         return captureType == .screenshot ? "Take screenshot" : "Record"
@@ -90,13 +92,13 @@ struct PoachHomeView: View {
                 .disabled(isWorking || isRecording)
 
             Button(action: performCaptureAction) {
-                Label(primaryTitle, systemImage: isRecording ? "stop.fill" : captureType.symbol)
+                Label(primaryTitle, systemImage: onCancelSelection != nil ? "xmark" : isRecording ? "stop.fill" : captureType.symbol)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PoachActionStyle(fill: isRecording ? .red : PoachPalette.ink, foreground: .white))
             .keyboardShortcut(.defaultAction)
-            .disabled(isWorking)
+            .disabled(isWorking && onCancelSelection == nil)
 
             if let loadingFile {
                 HStack(alignment: .top, spacing: 12) {
@@ -187,7 +189,8 @@ struct PoachHomeView: View {
     }
 
     private func performCaptureAction() {
-        if isRecording { onStopRecording() }
+        if let onCancelSelection { onCancelSelection() }
+        else if isRecording { onStopRecording() }
         else if captureType == .screenshot { onScreenshot() }
         else { onStartRecording() }
     }
