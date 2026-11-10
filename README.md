@@ -19,6 +19,8 @@ Record how an interface responds to a click, hover, or drag. Poach keeps a local
 
 **Reuse a handoff.** Bookmark a handoff in the editor and give it a name. In **Favorites**, click its cover to copy a fresh handoff. A favorite keeps the notes, palette, sampled pointer evidence, and up to three reference images totaling 768 KiB or less. To share it with someone, open its menu and choose **Export Poach**. They can open **Favorites → Import** and select the `.poach` file. Use the original capture when you need a frame at another timestamp.
 
+**Chrome companion preview.** Pair Chrome from Welcome or Settings, select a component, and record its interaction in Poach. The extension sends browser events, visible state changes, and available animation timing directly to Poach. The editor attaches the details to the matching recording. The preview uses the unpacked extension bundled in Poach.app. [Set up the preview and try the dropzone benchmark](CONTRIBUTING.md#chrome-companion-preview).
+
 In **Settings → Storage**, see how much space Poach uses and choose **Clear unused captures** to remove old recordings, screenshots, and extracted frames. Poach keeps the open edit, media and frames referenced by handoffs that are still available, and your imported originals.
 
 ## Install on your Mac
