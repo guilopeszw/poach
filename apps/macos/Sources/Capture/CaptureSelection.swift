@@ -22,21 +22,12 @@ final class CaptureSelectionWindowController {
     static let shared = CaptureSelectionWindowController()
     private var panels: [NSPanel] = []
     private var continuation: CheckedContinuation<CaptureTarget, Error>?
+    private var spaceObserver: NSObjectProtocol?
 
     func select(mode: PoachCaptureMode, screenshot: Bool) async throws -> CaptureTarget {
         NSApp.unhide(nil)
         NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
-        // Read the window list before Poach's own overlays exist.
-        let windows: [CaptureWindowCandidate]
-        if mode == .window {
-            let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-            windows = CaptureTargetGeometry.selectableWindows(
-                CaptureTargetGeometry.candidates(fromWindowInfo: info),
-                excludingPID: ProcessInfo.processInfo.processIdentifier
-            )
-        } else {
-            windows = []
-        }
+        let windows = mode == .window ? Self.visibleWindows() : []
         let screens = NSScreen.screens.compactMap { screen -> (NSScreen, CGDirectDisplayID)? in
             guard let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else { return nil }
             return (screen, id)
@@ -51,6 +42,21 @@ final class CaptureSelectionWindowController {
         )
         state.displayTarget = screens.first { $0.0.frame.contains(NSEvent.mouseLocation) }?.1 ?? screens[0].1
         state.onFinish = { [weak self] result in self?.finish(result) }
+        if mode == .window {
+            // The overlay follows every desk, but the window list only covers the desk that was
+            // active when it was read. Reload it whenever the person switches desks.
+            spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+            ) { [weak state] _ in
+                MainActor.assumeIsolated {
+                    state?.reloadWindows(Self.visibleWindows(), pointer: Self.pointerTopLeft())
+                    // WindowServer can report the new desk's windows a moment late.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        state?.reloadWindows(Self.visibleWindows(), pointer: Self.pointerTopLeft())
+                    }
+                }
+            }
+        }
 
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
@@ -89,7 +95,25 @@ final class CaptureSelectionWindowController {
         }
     }
 
+    /// Selectable windows on the current desk. Poach's own windows (including these overlays) are excluded by PID.
+    private static func visibleWindows() -> [CaptureWindowCandidate] {
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        return CaptureTargetGeometry.selectableWindows(
+            CaptureTargetGeometry.candidates(fromWindowInfo: info),
+            excludingPID: ProcessInfo.processInfo.processIdentifier
+        )
+    }
+
+    /// The pointer in global top-left coordinates.
+    private static func pointerTopLeft() -> CGPoint {
+        let location = NSEvent.mouseLocation
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(x: location.x, y: primaryHeight - location.y)
+    }
+
     private func finish(_ result: Result<CaptureTarget, Error>) {
+        if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }
+        spaceObserver = nil
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         switch result {
@@ -117,7 +141,7 @@ final class CaptureSelectionState: ObservableObject {
 
     let mode: PoachCaptureMode
     let screenshot: Bool
-    let windows: [CaptureWindowCandidate]
+    private(set) var windows: [CaptureWindowCandidate]
     let displays: [Display]
     @Published var displayTarget: CGDirectDisplayID?
     @Published var windowTarget: CaptureWindowCandidate?
@@ -130,6 +154,13 @@ final class CaptureSelectionState: ObservableObject {
         self.screenshot = screenshot
         self.windows = windows
         self.displays = displays
+    }
+
+    /// Replaces the window list after a desk switch. A target from the previous desk is dropped.
+    func reloadWindows(_ windows: [CaptureWindowCandidate], pointer: CGPoint) {
+        self.windows = windows
+        windowLocked = false
+        windowTarget = CaptureTargetGeometry.window(at: pointer, in: windows)
     }
 
     /// Pointer moved to `point` (global top-left coordinates) over `displayID`.
