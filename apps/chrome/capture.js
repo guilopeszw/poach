@@ -46,7 +46,8 @@
       const node = walker.nextNode();
       if (!node) break;
       const parent = node.parentElement;
-      if (!parent || parent.closest(excludedText) || parent.getClientRects().length === 0) continue;
+      if (!parent || parent.closest(excludedText) || parent.getClientRects().length === 0 ||
+          !parent.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
       const value = limit(node.textContent, 220 - total);
       if (!value) continue;
       total += value.length + 1;
@@ -195,7 +196,7 @@
     document.documentElement.append(overlay);
     selectionBanner = document.createElement("div");
     selectionBanner.setAttribute("role", "status");
-    selectionBanner.textContent = "Poach · Click to select · ↑ Parent · Enter to confirm · Esc to cancel";
+    selectionBanner.textContent = "Poach · Click or Tab to select · ↑ Parent · Enter to confirm · Esc to cancel";
     Object.assign(selectionBanner.style, {
       position: "fixed", top: "12px", left: "50%", transform: "translateX(-50%)",
       pointerEvents: "none", zIndex: "2147483647", borderRadius: "8px", padding: "8px 12px",
@@ -213,20 +214,25 @@
     }
     if (candidate) highlight(candidate);
     document.addEventListener("pointermove", event => {
-      if (event.target instanceof Element) highlight(event.target);
+      if (event.isTrusted && event.target instanceof Element) highlight(event.target);
+    }, options);
+    document.addEventListener("focusin", event => {
+      if (event.isTrusted && event.target instanceof Element) highlight(event.target);
     }, options);
     for (const type of ["pointerdown", "pointerup"]) {
-      document.addEventListener(type, event => event.stopImmediatePropagation(), options);
+      document.addEventListener(type, event => {
+        if (event.isTrusted) event.stopImmediatePropagation();
+      }, options);
     }
     document.addEventListener("click", event => {
-      if (!(event.target instanceof Element)) return;
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       endSelection();
       start(event.target);
     }, options);
     document.addEventListener("keydown", event => {
-      if (!["Escape", "ArrowUp", "Enter"].includes(event.key)) return;
+      if (!event.isTrusted || !["Escape", "ArrowUp", "Enter"].includes(event.key)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (event.key === "Escape") {
