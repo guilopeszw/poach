@@ -40,3 +40,46 @@ enum PoachHandoff {
         return NSPasteboard.general.setString(message, forType: .string)
     }
 }
+
+enum PoachAssistant: String, CaseIterable, Identifiable {
+    case codex
+    case claudeCode = "claude"
+
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .codex: "Codex"
+        case .claudeCode: "Claude Code"
+        }
+    }
+
+    private var bundleIdentifier: String {
+        switch self {
+        case .codex: "com.openai.codex"
+        case .claudeCode: "com.anthropic.claudefordesktop"
+        }
+    }
+
+    @MainActor
+    var appIcon: NSImage? {
+        guard let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            return nil
+        }
+        let icon = NSWorkspace.shared.icon(forFile: application.path)
+        icon.size = NSSize(width: 15, height: 15)
+        return icon
+    }
+
+    @MainActor
+    func openApp() -> Bool {
+        if let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first,
+           runningApp.isActive || runningApp.activate() {
+            return true
+        }
+        guard let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            return false
+        }
+        return NSWorkspace.shared.open(application)
+    }
+}

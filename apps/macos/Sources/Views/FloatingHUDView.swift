@@ -43,6 +43,7 @@ struct FloatingHUDView: View {
     @State private var showingSaveFavorite = false
     @State private var favoriteName = ""
     @State private var favoriteError = ""
+    @AppStorage("handoffAssistant") private var handoffAssistant = PoachAssistant.codex
     @State private var connected = false
     @State private var showingAssistantSetup = false
     @State private var shareStatus = ""
@@ -124,33 +125,7 @@ struct FloatingHUDView: View {
                     .onChange(of: context) { shareStatus = "Changes have not been shared yet." }
             }
 
-            Button {
-                connected = Self.hasLiveConnector()
-                guard connected else { return }
-                copyFeedback = nil
-                do {
-                    let id = try onShareContext(implementationContext, annotations)
-                    let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets. For a drag, inspect the frames after release and include visible changes through the end of the response. Use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
-                    let copied = PoachHandoff.copyToClipboard(message)
-                    shareStatus = copied ? "" : "Clipboard unavailable. Click Copy handoff to try again."
-                    if copied { copyFeedback = UUID() }
-
-                } catch {
-                    shareStatus = "Could not share: \(error.localizedDescription)"
-                }
-            }
-            label: {
-                Label(copyFeedback == nil ? "Copy handoff to chat" : "Copied",
-                      systemImage: copyFeedback == nil ? "doc.on.doc" : "checkmark")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
-            .disabled(!connected)
-            .task(id: copyFeedback) {
-                guard copyFeedback != nil else { return }
-                do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                copyFeedback = nil
-            }
+            handoffControl
             if !connected {
                 Button { showingAssistantSetup = true } label: {
                     Label("Connect Codex or Claude", systemImage: "link")
@@ -256,6 +231,111 @@ struct FloatingHUDView: View {
         }
         .onChange(of: comments) { shareStatus = "Changes have not been shared yet." }
         .onDisappear { playback.detach(); player = nil }
+    }
+
+    private var handoffControl: some View {
+        HStack(spacing: 0) {
+            Button {
+                handoff(to: handoffAssistant)
+            } label: {
+                HStack(spacing: 7) {
+                    if copyFeedback == nil {
+                        assistantIcon(handoffAssistant)
+                        Text("Continue with \(handoffAssistant.name)")
+                    } else {
+                        Label("Copied!", systemImage: "checkmark")
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .contentShape(Rectangle())
+                .contentTransition(.opacity)
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: copyFeedback != nil)
+
+            Rectangle()
+                .fill(.white.opacity(0.24))
+                .frame(width: 1, height: 18)
+                .accessibilityHidden(true)
+
+            Menu {
+                ForEach(PoachAssistant.allCases) { assistant in
+                    Button {
+                        handoff(to: assistant)
+                    } label: {
+                        Label {
+                            Text("Continue with \(assistant.name)")
+                        } icon: {
+                            assistantIcon(assistant)
+                        }
+                    }
+                }
+                Divider()
+                Button {
+                    handoff(to: nil)
+                } label: {
+                    Label("Copy prompt", systemImage: "doc.on.doc")
+                }
+            } label: {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 11, weight: .medium))
+                    .opacity(0.76)
+                    .frame(width: 38, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .accessibilityLabel("Switch assistant")
+            .help("Switch assistant or copy the prompt")
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(connected ? .white : Color.secondary)
+        .background(connected ? PoachPalette.ink : Color(white: 0.85), in: RoundedRectangle(cornerRadius: 9))
+        .disabled(!connected)
+        .task(id: copyFeedback) {
+            guard copyFeedback != nil else { return }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            copyFeedback = nil
+        }
+    }
+
+    @ViewBuilder
+    private func assistantIcon(_ assistant: PoachAssistant) -> some View {
+        if let icon = assistant.appIcon {
+            Image(nsImage: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 15, height: 15)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func handoff(to assistant: PoachAssistant?) {
+        #if DEBUG
+        if designFixture == nil { connected = Self.hasLiveConnector() }
+        #else
+        connected = Self.hasLiveConnector()
+        #endif
+        guard connected else { return }
+        shareStatus = ""
+        do {
+            let id = try onShareContext(implementationContext, annotations)
+            let prompt = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets. For a drag, inspect the frames after release and include visible changes through the end of the response. Use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
+            guard PoachHandoff.copyToClipboard(prompt) else {
+                shareStatus = "Clipboard unavailable. Try sharing again."
+                return
+            }
+            if let assistant {
+                handoffAssistant = assistant
+                copyFeedback = nil
+                shareStatus = assistant.openApp()
+                    ? "Prompt copied. Paste it into your chat."
+                    : "Prompt copied. Open \(assistant.name) to paste it into your chat."
+            } else {
+                copyFeedback = UUID()
+            }
+        } catch {
+            shareStatus = "Could not share: \(error.localizedDescription)"
+        }
     }
 
     private enum CommentsLayout {
