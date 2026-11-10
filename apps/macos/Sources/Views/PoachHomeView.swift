@@ -34,8 +34,9 @@ struct PoachHomeView: View {
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private enum Tab { case capture, favorites, settings }
+    private enum Tab: Int { case capture, favorites, settings }
     @State private var tab = Tab.capture
+    @State private var tabSlideOffset: CGFloat = 0
     @State private var captureType = CaptureType.record
 
     private var primaryTitle: String {
@@ -50,22 +51,21 @@ struct PoachHomeView: View {
             HStack {
                 header
                 Spacer()
-                PoachSegments(label: "Poach", selection: $tab,
+                PoachSegments(label: "Poach", selection: tabSelection,
                               choices: [(.capture, "Capture"), (.favorites, "Favorites"), (.settings, "Settings")],
                               underlined: true)
                     .frame(width: 214)
             }
             .padding(.bottom, 5)
             .overlay(alignment: .bottom) { Divider() }
-            Group {
-                switch tab {
-                case .capture: captureControls
-                case .favorites: PoachFavoritesView()
-                case .settings: PoachSettingsView(captureBusy: isWorking || isRecording)
-                }
+            ZStack(alignment: .topLeading) {
+                tabContent
+                    .id(tab)
+                    .transition(tabTransition)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.14), value: tab)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
+            .animation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.18), value: tab)
         }
         .padding(16)
         .frame(width: layoutWidth ?? Self.windowSize.width, height: Self.windowSize.height, alignment: .topLeading)
@@ -73,6 +73,30 @@ struct PoachHomeView: View {
         .background(PoachPalette.canvas)
         .tint(PoachPalette.ink)
         .preferredColorScheme(.light)
+    }
+
+    private var tabSelection: Binding<Tab> {
+        Binding(get: { tab }, set: { selectTab($0) })
+    }
+
+    private var tabTransition: AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .asymmetric(insertion: .offset(x: tabSlideOffset).combined(with: .opacity), removal: .opacity)
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch tab {
+        case .capture: captureControls
+        case .favorites: PoachFavoritesView()
+        case .settings: PoachSettingsView(captureBusy: isWorking || isRecording)
+        }
+    }
+
+    private func selectTab(_ next: Tab) {
+        guard next != tab else { return }
+        tabSlideOffset = next.rawValue > tab.rawValue ? 24 : -24
+        tab = next
     }
 
     static var windowSize: NSSize {
