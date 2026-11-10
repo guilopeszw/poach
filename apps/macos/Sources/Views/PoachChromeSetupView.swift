@@ -20,6 +20,7 @@ struct PoachChromeSetupView: View {
 }
 
 struct PoachChromeSetupContent: View {
+    var isOnboarding = false
     @State private var copiedCode = false
     @State private var copiedFolder = false
     private let extensionFolder = Bundle.main.url(forResource: "ChromeExtension", withExtension: nil)
@@ -31,7 +32,8 @@ struct PoachChromeSetupContent: View {
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(PoachPalette.ink)
                     .frame(width: 44, height: 44)
-                    .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 12))
+                    .background(isOnboarding ? PoachOnboardingColors.lime.opacity(0.65) : PoachPalette.inset,
+                                in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -82,7 +84,10 @@ struct PoachChromeSetupContent: View {
                             copiedCode = PoachHandoff.copyToClipboard(PoachChromeBridge.shared.pairingCode())
                             copiedFolder = false
                         }
-                        .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
+                        .buttonStyle(PoachActionStyle(
+                            fill: isOnboarding ? PoachPalette.cobalt : PoachPalette.ink,
+                            foreground: .white
+                        ))
                     }
                 }
             }
@@ -103,7 +108,8 @@ struct PoachChromeSetupContent: View {
         Text(number.formatted())
             .font(.caption.weight(.semibold).monospacedDigit())
             .frame(width: 23, height: 23)
-            .background(PoachPalette.inset, in: Circle())
+            .background(isOnboarding ? PoachOnboardingColors.orange.opacity(0.20) : PoachPalette.inset,
+                        in: Circle())
             .accessibilityLabel("Step \(number)")
     }
 }

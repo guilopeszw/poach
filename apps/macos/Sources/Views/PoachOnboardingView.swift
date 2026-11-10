@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+enum PoachOnboardingColors {
+    static let orange = Color(red: 255 / 255, green: 99 / 255, blue: 59 / 255)
+    static let lime = Color(red: 229 / 255, green: 247 / 255, blue: 101 / 255)
+}
+
 struct PoachOnboardingView: View {
     let onContinue: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -10,11 +15,11 @@ struct PoachOnboardingView: View {
         VStack(alignment: .leading, spacing: 18) {
             Text(showsChromeStep ? "Step 2 of 2 · Optional" : "Step 1 of 2")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PoachPalette.cobalt)
 
             ZStack(alignment: .topLeading) {
                 if showsChromeStep {
-                    PoachChromeSetupContent()
+                    PoachChromeSetupContent(isOnboarding: true)
                         .transition(slide(from: 18))
                 } else {
                     VStack(spacing: 20) {
@@ -37,7 +42,7 @@ struct PoachOnboardingView: View {
                         .buttonStyle(PoachActionStyle())
                 } else {
                     Button("Next") { showsChromeStep = true }
-                        .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
+                        .buttonStyle(PoachActionStyle(fill: PoachPalette.cobalt, foreground: .white))
                         .keyboardShortcut(.defaultAction)
                 }
             }
@@ -49,7 +54,7 @@ struct PoachOnboardingView: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(alignment: .top) {
             RadialGradient(
-                colors: [Color(red: 0.90, green: 0.86, blue: 0.81), PoachPalette.canvas],
+                colors: [PoachPalette.cobalt.opacity(0.10), PoachPalette.canvas],
                 center: .top,
                 startRadius: 0,
                 endRadius: 255
@@ -92,21 +97,25 @@ struct PoachOnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             OnboardingFeatureRow(
                 symbol: "record.circle",
+                tile: PoachOnboardingColors.orange.opacity(0.20),
                 title: "Record the screen",
                 detail: "Record a selected area, window, or the full screen."
             )
             OnboardingFeatureRow(
                 symbol: "cursorarrow.click.2",
+                tile: PoachOnboardingColors.lime.opacity(0.65),
                 title: "Capture clicks and drags",
                 detail: "Pointer movement, clicks, and drags stay with the recording."
             )
             OnboardingFeatureRow(
                 symbol: "text.bubble",
+                tile: PoachPalette.cobalt.opacity(0.10),
                 title: "Leave notes on the timeline",
                 detail: "Comment at the exact moment you want your agent to notice."
             )
             OnboardingFeatureRow(
                 symbol: "link",
+                tile: PoachPalette.inset,
                 title: "Hand it to Codex or Claude",
                 detail: "Share the recording, notes, and colors through MCP."
             )
@@ -116,6 +125,7 @@ struct PoachOnboardingView: View {
 
 private struct OnboardingFeatureRow: View {
     let symbol: String
+    let tile: Color
     let title: String
     let detail: String
 
@@ -125,7 +135,7 @@ private struct OnboardingFeatureRow: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(PoachPalette.ink)
                 .frame(width: 38, height: 38)
-                .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 11))
+                .background(tile, in: RoundedRectangle(cornerRadius: 11))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {

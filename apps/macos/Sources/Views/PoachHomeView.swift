@@ -47,6 +47,12 @@ struct PoachHomeView: View {
         return captureType == .screenshot ? "Take screenshot" : "Record"
     }
 
+    private var primaryFill: Color {
+        if onCancelSelection != nil { return PoachPalette.ink }
+        if isRecording || captureType == .record { return PoachPalette.recordingRed }
+        return PoachPalette.cobalt
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -124,7 +130,7 @@ struct PoachHomeView: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(PoachActionStyle(fill: isRecording ? .red : PoachPalette.ink, foreground: .white))
+            .buttonStyle(PoachActionStyle(fill: primaryFill, foreground: .white))
             .keyboardShortcut(.defaultAction)
             .disabled(isWorking && onCancelSelection == nil)
 
