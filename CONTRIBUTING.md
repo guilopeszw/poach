@@ -156,15 +156,15 @@ From the project root, run `python3 -m http.server 8741 --bind 127.0.0.1 --direc
 
 To capture the upload and rejection in one handoff:
 
-1. Choose **Choose a component** and click the dropzone. To select a parent, hover over a child, press **↑** until the outline covers the component you want, then press **Enter**. **Escape** cancels the picker.
+1. Choose **Choose a component** and click the dropzone. To select with the keyboard, press **Tab** to focus an element. Press **↑** to select its parent, then **Enter** to confirm. **Escape** cancels the picker.
 2. Start a video recording in Poach using **Screen area** or **App window**. Drag **mood.png** into the dropzone and wait for **Uploaded**. Choose **Replay** on the benchmark, then drag **demo.mp4** into the dropzone and wait for the size-limit message.
 3. Stop the Mac recording. On the same Chrome tab, open the extension and choose **Finish and send**. The extension also finishes automatically when its 90-second limit is reached.
-4. Confirm the site origin appears beside **Chrome evidence** in the Poach editor. Copy the handoff and use `poach_read_brief` in your connected assistant to see the video and the browser observations.
+4. Check that the Poach editor shows **Chrome evidence included** with the site. Copy the handoff and use `poach_read_brief` in your connected assistant to see the video and the browser observations.
 5. To start another browser capture on the same tab, choose **Choose another component**. If you edit the extension source, use **Reload** on its card at `chrome://extensions` and refresh the test page.
 
-Poach uses temporary access to the tab when you invoke the extension. It collects a bounded set of visible text, styles, browser events, and available animation data for the selected component and its descendants, plus pointer releases over its bounds. Capture runs for up to 90 seconds. The extension sends snapshots to the paired app over loopback. Poach keeps recent evidence in memory and includes it in the handoff only when you share. Input values, typed keys, and file contents are excluded.
+Poach uses temporary access to the tab when you invoke the extension. It collects a bounded set of visible text, styles, browser events, and available animation data for the selected component and its descendants, plus pointer releases over its bounds. Capture runs for up to 90 seconds. The extension sends snapshots to the paired app over loopback. Poach keeps recent evidence in memory. Sharing saves included evidence with the local handoff, and bookmarking stores it with the favorite. Exporting that favorite includes the browser evidence in the `.poach` file. Input values, typed keys, and file contents are excluded.
 
-Browser `atMs` values are relative to the start of the browser session. For overlapping native recordings, add `videoOffsetMs` to estimate the position in the video. Poach attaches Chrome evidence only when it overlaps a native recording. When an offset is available, `poach_read_moment` includes nearby browser observations. Compare those observations with the video to assess what changed.
+Browser `atMs` values are relative to the start of the browser session. For overlapping native recordings, add `videoOffsetMs` to estimate the position in the video. Poach includes Chrome evidence when it overlaps a native recording in time. When an offset is available, `poach_read_moment` includes nearby browser observations. Compare those observations with the video to assess what changed.
 
 ## Package and verify a release (authorized maintainers)
 
