@@ -3,7 +3,7 @@
 <p align="center">A lightweight Mac app for the UI you wish you’d made.</p>
 <p align="center"><strong><a href="https://github.com/guilopeszw/poach/releases/download/v1.0.0/Poach-arm64.zip">Download for Apple silicon</a></strong></p>
 
-<p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach’s editor with a recorded recommendation card, a timestamped comment in the right sidebar, a palette, and instructions for the handoff."></a></p>
+<p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach’s editor showing a blue and orange Night Shift Radio player, its color palette, the Snatch font button, and a handoff to Codex."></a></p>
 
 ## What does Poach do?
 
