@@ -203,7 +203,7 @@ struct PoachApp: App {
             defer { loadingFile = nil; isWorking = false }
             do {
                 let result = try await PoachInspectionRunner.inspect(videoURL: mediaURL) { importStatus.advance(to: $0) }
-                hudWindow.show(result, status: importStatus)
+                hudWindow.show(result)
             } catch {
                 showError(title: "Poach couldn't load this media", error: error)
             }
@@ -223,8 +223,9 @@ struct PoachApp: App {
                 let result = try await PoachInspectionRunner.inspect(videoURL: imageURL) { stage in
                     hudWindow.preparation.advance(to: stage)
                 }
-                hudWindow.show(result, status: hudWindow.preparation, original: imageURL)
+                hudWindow.show(result, original: imageURL)
             } catch {
+                hudWindow.dismissPreparing()
                 NSApp.unhide(nil)
                 NSApp.activate(ignoringOtherApps: true)
                 NSApp.windows.first { $0.title == "Poach" }?.makeKeyAndOrderFront(nil)
@@ -306,7 +307,7 @@ struct PoachApp: App {
             }
             result.pointerTrace = recording.pointerTrace
             Self.captureLog.notice("Recording analysis completed")
-            hudWindow.show(result, status: hudWindow.preparation, original: videoURL)
+            hudWindow.show(result, original: videoURL)
             Self.captureLog.notice("Review editor presented")
         } catch {
             NSApp.unhide(nil)
@@ -601,9 +602,8 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         panel?.close()
     }
 
-    func show(_ result: PoachInspection, status: InspectionStatus, original: URL? = nil) {
+    func show(_ result: PoachInspection, original: URL? = nil) {
         CaptureStorage.openPaths = [result.sourcePath] + result.keyframes.map(\.imagePath) + [original?.path].compactMap { $0 }
-        status.finish()
         let palette = result.palette.map { HUDPaletteToken(hex: $0, color: Color(hex: $0)) }
         let panel = self.panel ?? makePanel()
         let screen = panel.screen ?? NSScreen.main
@@ -614,7 +614,6 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
             isVideo: result.mediaType != "image",
             availableWidth: visibleSize.width - 32,
             availableHeight: contentHeight - 32,
-            status: status,
             palette: palette,
             pointerTrace: result.pointerTrace,
             onShareContext: { try Self.shareContext(result, context: $0, annotations: $1) },

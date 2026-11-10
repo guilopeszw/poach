@@ -13,7 +13,7 @@ Record how an interface responds to a click, hover, or drag. Poach keeps a local
 
 1. **Capture the interaction.** Record a screen area, a window, or a full display. For a selected area, Poach dims the outside and adds a soft edge shadow while recording, so the capture boundary stays clear. The overlay is click-through and Poach’s controls stay out of the video. Press **⌘⇧P** to select an area, then press it again to stop. For a still frame, switch to **Screenshot**, choose what to capture, then click **Take screenshot…**. You can also drop in an existing video or image.
 2. **Mark the details.** Pause the video and click the comment icon to label what happened at the playhead. Click a comment to return to its frame. Native recordings include a bounded pointer trace with button transitions and drag samples. Adjust the extracted palette and add any instructions that apply to the whole capture.
-3. **Build with your assistant.** Choose **Copy handoff for chat** and paste it into your connected conversation. The MCP connector lets the assistant read your notes, see representative frames, and request a frame at a specific timestamp. Poach needs no separate AI API key.
+3. **Build with your assistant.** Choose **Copy handoff to chat** and paste it into your connected conversation. The MCP connector lets the assistant read your notes, see representative frames, and request a frame at a specific timestamp. Poach needs no separate AI API key.
 
 In **Settings → Storage**, see how much space Poach uses and choose **Clear unused captures** to remove old recordings, screenshots, and extracted frames. Poach keeps the open edit, media and frames referenced by handoffs that are still available, and your imported originals.
 

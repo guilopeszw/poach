@@ -35,13 +35,13 @@ struct FloatingHUDView: View {
         return overlaysComments ? .drawer : .sidebar
     }
     @State private var playback = CommentPlayback()
-    let status: InspectionStatus
     let palette: [HUDPaletteToken]
     let pointerTrace: PointerTrace?
     var onShareContext: (String, [InteractionAnnotation]) throws -> String
     @State private var connected = false
     @State private var showingAssistantSetup = false
     @State private var shareStatus = ""
+    @State private var copyFeedback: UUID?
     @State private var context = ""
     @State private var colorOverrides: [String: Color] = [:]
     var onClose: () -> Void
@@ -66,8 +66,6 @@ struct FloatingHUDView: View {
             if isVideo {
                 CommentTimeline(playback: playback, comments: $comments, isOpen: $commentsOpen)
             }
-
-            InspectionStatusLabel(status: status)
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("Palette").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
@@ -123,6 +121,7 @@ struct FloatingHUDView: View {
             Button {
                 connected = Self.hasLiveConnector()
                 guard connected else { return }
+                copyFeedback = nil
                 do {
                     let annotations = comments.map {
                         InteractionAnnotation(timeMs: Int(($0.time * 1_000).rounded()), text: $0.text)
@@ -131,18 +130,25 @@ struct FloatingHUDView: View {
                     let message = "Use Poach MCP to call poach_read_brief with briefId \(id). Verify the returned briefId matches before using its images, pointer trace, and timestamped notes. \(pointerEvidenceGuidance) Match pointer coordinates and timestamps to the frames to identify targets. For a drag, inspect the frames after release and include visible changes through the end of the response. Use the video and notes to describe visible results, and ask if behavior is ambiguous. Recreate the recorded interaction in this project. For video details, call poach_read_moment with the same briefId and timeMs."
                     NSPasteboard.general.clearContents()
                     let copied = NSPasteboard.general.setString(message, forType: .string)
-                    shareStatus = copied ? "Handoff copied." : "Clipboard unavailable. Click Copy handoff to try again."
+                    shareStatus = copied ? "" : "Clipboard unavailable. Click Copy handoff to try again."
+                    if copied { copyFeedback = UUID() }
 
                 } catch {
                     shareStatus = "Could not share: \(error.localizedDescription)"
                 }
             }
             label: {
-                Label("Copy handoff for chat", systemImage: "doc.on.doc")
+                Label(copyFeedback == nil ? "Copy handoff to chat" : "Copied",
+                      systemImage: copyFeedback == nil ? "doc.on.doc" : "checkmark")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PoachActionStyle(fill: PoachPalette.ink, foreground: .white))
             .disabled(!connected)
+            .task(id: copyFeedback) {
+                guard copyFeedback != nil else { return }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                copyFeedback = nil
+            }
             if !connected {
                 Button { showingAssistantSetup = true } label: {
                     Label("Connect Codex or Claude", systemImage: "link")

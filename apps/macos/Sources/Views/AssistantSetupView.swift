@@ -107,7 +107,11 @@ struct PoachSettingsView: View {
                 Picker("Default recording mode", selection: $defaultMode) {
                     ForEach(PoachCaptureMode.allCases) { mode in Text(mode.title).tag(mode.rawValue) }
                 }
-                .labelsHidden().pickerStyle(.menu).buttonStyle(.plain).fixedSize()
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .buttonStyle(.bordered)
+                .menuIndicator(.visible)
+                .fixedSize()
             }
             .frame(minHeight: 24)
             Divider()
