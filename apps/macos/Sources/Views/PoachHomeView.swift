@@ -29,6 +29,7 @@ struct PoachHomeView: View {
     @State private var targeted = false
     @State private var hovering = false
     @State private var dropError: String?
+    @State private var dropRejectionPhase = 0.0
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -121,12 +122,13 @@ struct PoachHomeView: View {
                             .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 9))
                             .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
                             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
+                            .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
                             .accessibilityHidden(true)
                         Text("Drop an image or video")
                             .font(.system(size: 13, weight: .semibold))
                         Text(dropError ?? "or click to browse")
                             .font(.caption)
-                            .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.ink)
+                            .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.errorText)
                             .multilineTextAlignment(.center)
                     }
                     .padding(6)
@@ -149,7 +151,7 @@ struct PoachHomeView: View {
             .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
                 guard !isWorking, !isRecording else { return false }
                 guard providers.count == 1, let file = providers.first else {
-                    dropError = "Drop one file at a time."
+                    rejectDrop("Drop one file at a time.")
                     return false
                 }
                 _ = file.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
@@ -161,14 +163,26 @@ struct PoachHomeView: View {
                         error = "Poach couldn't read this file."
                     }
                     DispatchQueue.main.async {
-                        dropError = error
-                        if let url, error == nil { onDropMedia(url) }
+                        if let error {
+                            rejectDrop(error)
+                        } else if let url {
+                            dropError = nil
+                            onDropMedia(url)
+                        }
                     }
                 }
                 return true
             }
             .disabled(isWorking || isRecording)
             }
+        }
+    }
+
+    private func rejectDrop(_ message: String) {
+        dropError = message
+        guard !reduceMotion else { return }
+        withAnimation(.linear(duration: 0.34)) {
+            dropRejectionPhase += 1
         }
     }
 
@@ -191,6 +205,23 @@ struct PoachHomeView: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+private nonisolated struct DropRejectionShake: ViewModifier, Animatable {
+    var phase: Double
+
+    var animatableData: Double {
+        get { phase }
+        set { phase = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let progress = phase - floor(phase)
+        let swing = sin(progress * 6 * .pi) * (1 - progress)
+        content
+            .rotationEffect(.degrees(-12 * swing))
+            .offset(x: 6 * swing)
     }
 }
 

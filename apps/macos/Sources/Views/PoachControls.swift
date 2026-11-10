@@ -6,6 +6,7 @@ enum PoachPalette {
     static let inset = Color(red: 0.93, green: 0.93, blue: 0.92)
     static let ink = Color(red: 41/255, green: 41/255, blue: 39/255)
     static let outline = Color(red: 216/255, green: 216/255, blue: 211/255)
+    static let errorText = Color(red: 180/255, green: 35/255, blue: 30/255)
 }
 
 struct PoachSegments<Value: Hashable>: View {
