@@ -12,6 +12,7 @@ enum CaptureStorage {
     }
 
     private struct Handoff: Decodable {
+        let briefId: UUID?
         let sharedAt: Double
         let evidence: Evidence
         struct Evidence: Decodable {
@@ -19,6 +20,23 @@ enum CaptureStorage {
             let keyframes: [Frame]
             struct Frame: Decodable { let imagePath: String }
         }
+    }
+
+    static func archiveActiveHandoff(_ active: URL, in archive: URL) throws {
+        let data: Data
+        do {
+            data = try Data(contentsOf: active)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return
+        }
+        guard let handoff = try? JSONDecoder().decode(Handoff.self, from: data),
+              let id = handoff.briefId,
+              Date().timeIntervalSince1970 - handoff.sharedAt <= 86400 else { return }
+
+        let destination = archive.appendingPathComponent("\(id.uuidString.lowercased()).json")
+        guard !FileManager.default.fileExists(atPath: destination.path) else { return }
+        try data.write(to: destination, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
     }
 
     static func scan(temp: URL = FileManager.default.temporaryDirectory,

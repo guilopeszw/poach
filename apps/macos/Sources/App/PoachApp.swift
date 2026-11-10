@@ -686,10 +686,11 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate {
         try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: archive.path)
+        let activeBrief = directory.appendingPathComponent("active-brief.json")
+        try CaptureStorage.archiveActiveHandoff(activeBrief, in: archive)
         let archivedBrief = archive.appendingPathComponent("\(identifier.lowercased()).json")
         try data.write(to: archivedBrief, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: archivedBrief.path)
-        let activeBrief = directory.appendingPathComponent("active-brief.json")
         try data.write(to: activeBrief, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: activeBrief.path)
         return identifier
