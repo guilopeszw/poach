@@ -29,7 +29,8 @@ import Foundation
         let menu = CaptureWindowCandidate(windowID: 3, ownerPID: 12, appName: "Menu", title: "", frame: CGRect(x: 0, y: 0, width: 1470, height: 33), layer: 24)
         let tiny = CaptureWindowCandidate(windowID: 4, ownerPID: 13, appName: "Tiny", title: "", frame: CGRect(x: 0, y: 0, width: 20, height: 20), layer: 0)
         let mine = CaptureWindowCandidate(windowID: 5, ownerPID: poach, appName: "Poach", title: "", frame: CGRect(x: 0, y: 0, width: 1470, height: 956), layer: 0)
-        let selectable = CaptureTargetGeometry.selectableWindows([mine, menu, tiny, front, back], excludingPID: poach)
+        let invisible = CaptureWindowCandidate(windowID: 6, ownerPID: 14, appName: "Overlay", title: "", frame: CGRect(x: 0, y: 0, width: 1470, height: 956), layer: 0, alpha: 0)
+        let selectable = CaptureTargetGeometry.selectableWindows([mine, invisible, menu, tiny, front, back], excludingPID: poach)
         precondition(selectable == [front, back])
         precondition(CaptureTargetGeometry.window(at: CGPoint(x: 150, y: 150), in: selectable) == front)
         precondition(CaptureTargetGeometry.window(at: CGPoint(x: 700, y: 500), in: selectable) == back)
@@ -44,9 +45,9 @@ import Foundation
         precondition(CaptureTargetGeometry.appKitRect(fromGlobalTopLeft: CGRect(x: 10, y: -1000, width: 200, height: 100), primaryScreenHeight: 956) == CGRect(x: 10, y: 1856, width: 200, height: 100))
         let parsed = CaptureTargetGeometry.candidates(fromWindowInfo: [[
             kCGWindowNumber as String: 7, kCGWindowOwnerPID as String: 10, kCGWindowOwnerName as String: "Safari",
-            kCGWindowName as String: "Apple", kCGWindowLayer as String: 0,
+            kCGWindowName as String: "Apple", kCGWindowLayer as String: 0, kCGWindowAlpha as String: 0.5,
             kCGWindowBounds as String: CGRect(x: 1, y: 2, width: 300, height: 200).dictionaryRepresentation
         ], [kCGWindowOwnerPID as String: 10]])
-        precondition(parsed.count == 1 && parsed[0].windowID == 7 && parsed[0].frame == CGRect(x: 1, y: 2, width: 300, height: 200))
+        precondition(parsed.count == 1 && parsed[0].windowID == 7 && parsed[0].frame == CGRect(x: 1, y: 2, width: 300, height: 200) && parsed[0].alpha == 0.5)
     }
 }
