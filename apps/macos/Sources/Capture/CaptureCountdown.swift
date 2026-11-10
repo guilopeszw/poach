@@ -16,20 +16,17 @@ final class CaptureCountdownController {
     private var cancelled = false
     private let escape = PoachHotKey(keyCode: UInt32(kVK_Escape), modifiers: 0, id: 2)
 
-    private static let circleSize: CGFloat = 120
-    private static let cancelSize: CGFloat = 32
-
     /// - Parameters:
     ///   - outline: the capture target in AppKit global coordinates.
     ///   - screen: the screen that shows the countdown.
     /// - Throws: `ScreenCaptureError.selectionCancelled` when cancelled.
-    func run(seconds: Int, outline: CGRect, on screen: NSScreen) async throws {
+    func run(seconds: Int, outline: CGRect, on screen: NSScreen, screenshot: Bool = false) async throws {
         guard seconds > 0, !isRunning else { return }
         isRunning = true
         cancelled = false
         let model = CaptureCountdownModel(count: seconds)
         let overlay = makeOverlay(screen: screen, outline: outline, model: model)
-        let cancelPanel = makeCancelPanel(screen: screen, outline: outline)
+        let cancelPanel = makePillPanel(screen: screen, screenshot: screenshot)
         _ = escape.register { [weak self] in self?.cancel() }
         defer {
             escape.unregister()
@@ -82,13 +79,9 @@ final class CaptureCountdownController {
         return panel
     }
 
-    private func makeCancelPanel(screen: NSScreen, outline: CGRect) -> NSPanel {
-        let size = Self.cancelSize
-        let bounds = screen.visibleFrame
-        // Just below the countdown circle, kept on screen.
-        let x = min(max(outline.midX - size / 2, bounds.minX + 8), bounds.maxX - size - 8)
-        let y = min(max(outline.midY - Self.circleSize / 2 - 12 - size, bounds.minY + 8), bounds.maxY - size - 8)
-        let frame = CGRect(x: x, y: y, width: size, height: size)
+    /// The capture pill in its countdown state: only ✕ is active.
+    private func makePillPanel(screen: NSScreen, screenshot: Bool) -> NSPanel {
+        let frame = CapturePillLayout.frame(on: screen)
         let panel = CountdownPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Poach — Cancel countdown"
         panel.level = .screenSaver
@@ -97,20 +90,13 @@ final class CaptureCountdownController {
         panel.isMovable = false
         panel.hasShadow = false
         panel.becomesKeyOnlyIfNeeded = true
-        panel.contentView = TransparentHostingView(rootView:
-            Button { [weak self] in self?.cancel() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(PoachPalette.ink)
-                    .frame(width: size, height: size)
-                    .background(Color(white: 0.93), in: Circle())
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Cancel countdown")
-            .help("Cancel countdown (Esc)")
-            .preferredColorScheme(.light)
-        )
+        panel.contentView = TransparentHostingView(rootView: CapturePill(
+            phase: .countdown,
+            screenshot: screenshot,
+            timerExpanded: .constant(false),
+            onPrimary: {},
+            onCancel: { [weak self] in self?.cancel() }
+        ))
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.setFrame(frame, display: true)

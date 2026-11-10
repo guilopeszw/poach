@@ -263,39 +263,3 @@ extension DropRejectionShake: ViewModifier {
     }
 }
 
-struct PoachRecordingStatusView: View {
-    let elapsedSeconds: Int
-    let onStop: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle().fill(.red).frame(width: 8, height: 8)
-            Text("Recording screen").font(.system(size: 13, weight: .semibold))
-                .accessibilityValue("\(elapsedSeconds) of 30 seconds")
-            Spacer(minLength: 4)
-            Button("Stop") { onStop() }
-                .buttonStyle(PoachActionStyle(fill: .red, foreground: .white))
-                .keyboardShortcut(.defaultAction)
-                .help("Stop (Space or Return)")
-        }
-        .background {
-            // Space stops only while this panel is key; it is never registered globally,
-            // so spaces typed into the app being recorded are left alone.
-            Button("") { onStop() }
-                .keyboardShortcut(.space, modifiers: [])
-                .opacity(0)
-                .accessibilityHidden(true)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .frame(width: 260)
-        .background(PoachPalette.panel, in: RoundedRectangle(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.white.opacity(0.7), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
-        .tint(PoachPalette.ink)
-        .preferredColorScheme(.light)
-    }
-}
