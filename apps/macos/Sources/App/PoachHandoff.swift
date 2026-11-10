@@ -12,12 +12,15 @@ enum PoachHandoff {
         var evidence = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result)) as? [String: Any] ?? [:]
         evidence["annotations"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(annotations))
         let identifier = UUID().uuidString
+        let instruction = result.mediaType == "image"
+            ? "Recreate the visible UI using the screenshot and palette. Use the selected visual font match as an approximation when present. Ask about behavior the screenshot does not show."
+            : "Recreate this UI in the current project. Inspect the keyframes, preserve observed behavior and colors, and treat timing estimates as approximate. Ask about ambiguous behavior."
         let brief: [String: Any] = [
             "briefId": identifier,
             "version": 1,
             "sharedAt": Date().timeIntervalSince1970,
             "context": context,
-            "instruction": "Recreate this UI in the current project. Inspect the keyframes, preserve observed behavior and colors, and treat timing estimates as approximate. Ask about ambiguous behavior.",
+            "instruction": instruction,
             "evidence": evidence
         ]
         let data = try JSONSerialization.data(withJSONObject: brief, options: [.sortedKeys])

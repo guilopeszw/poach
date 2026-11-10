@@ -67,7 +67,7 @@ final class PoachChromeBridge {
         if let errorMessage { return errorMessage }
         if code == nil { return "Pair Chrome in Poach Settings to add browser evidence." }
         if pairingCodeRejected { return "Chrome’s pairing code is outdated. Pair again from Poach Settings." }
-        return "No Chrome capture matched this recording. Start and finish a capture in the Poach extension."
+        return "No Chrome session matched this capture. Start a session in Chrome before capturing in Poach."
     }
 
     private func accept(_ connection: NWConnection) {

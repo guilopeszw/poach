@@ -9,7 +9,8 @@
   ];
   const styleNames = [
     "opacity", "transform", "display", "visibility", "color", "backgroundColor",
-    "borderRadius", "width", "height", "overflow", "boxShadow", "fontSize",
+    "borderRadius", "width", "height", "overflow", "boxShadow",
+    "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing",
   ];
   const excludedText = "input, textarea, select, [contenteditable], [hidden], [aria-hidden=true], script, style";
   let phase = "idle";
@@ -34,7 +35,9 @@
 
   function styles(element) {
     const computed = getComputedStyle(element);
-    return Object.fromEntries(styleNames.map(name => [name, limit(computed[name], 90)]));
+    return Object.fromEntries(styleNames.map(name => [
+      name, limit(computed[name], name === "fontFamily" ? 240 : 90),
+    ]));
   }
 
   function visibleText(element) {

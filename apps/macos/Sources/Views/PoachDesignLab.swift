@@ -104,7 +104,7 @@ struct PoachDesignLab: View {
             FloatingHUDView(sourceURL: videoURL, isVideo: true, availableWidth: CGFloat(width),
                             availableHeight: heightLimit.map(CGFloat.init) ?? ((NSScreen.main?.visibleFrame.height ?? 800) - 56),
                             palette: swatches, pointerTrace: nil,
-                            onShareContext: { _, _, _ in "" }, onClose: {})
+                            onShareContext: { _, _, _, _ in "" }, onClose: {})
         case .settings:
             PoachSettingsView(storageVisible: false, captureBusy: true)
                 .padding(16)

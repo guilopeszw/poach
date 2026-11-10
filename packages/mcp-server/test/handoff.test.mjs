@@ -57,7 +57,19 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   brief.evidence.browserEvidence = {
     videoOffsetMs: -100,
     events: [{ atMs: 1075, type: "drop", target: { tag: "div" } }],
-    states: [{ atMs: 1250, text: "Uploaded" }, { atMs: 1900, text: "Too big" }],
+    states: [{
+      atMs: 1250,
+      text: "Uploaded",
+      styles: {
+        fontFamily: '"Fixture Sans", sans-serif',
+        fontSize: "24px",
+        fontWeight: "650",
+        fontStyle: "italic",
+        lineHeight: "30px",
+        letterSpacing: "-0.5px",
+        opacity: "1",
+      },
+    }, { atMs: 1900, text: "Too big" }],
   };
   const path = join(cache, "active-brief.json");
   await writeFile(path, JSON.stringify(brief));
@@ -107,7 +119,11 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.match(moment.content.find(item => item.type === "text").text, /The heart fills on click/);
   const momentText = moment.content.find(item => item.type === "text").text;
   assert.match(momentText, /"type":"drop".*"estimatedVideoMs":975/);
-  assert.match(momentText, /"text":"Uploaded","estimatedVideoMs":1150/);
+  assert.match(momentText, /"text":"Uploaded".*"estimatedVideoMs":1150/);
+  const browserLine = momentText.split("\n").find(line => line.startsWith("Nearby Chrome evidence"));
+  const [, upload] = JSON.parse(browserLine.slice(browserLine.indexOf("): ") + 3));
+  const { opacity, ...typography } = brief.evidence.browserEvidence.states[0].styles;
+  assert.deepEqual(upload.styles, typography);
   assert.doesNotMatch(momentText, /Too big/);
   assert.match(moment.content.find(item => item.type === "text").text, /sample-derived click\/drag candidates/);
   assert.match(moment.content.find(item => item.type === "text").text, /Pointer trace summary: 132 samples, 110 inside the capture, 12 with a button held, 10 recorded pointer events, and 4 summarized clicks or drags\./);
@@ -235,6 +251,10 @@ test("archived briefs remain readable by ID after a newer brief is shared", { ti
       sourcePath: "",
       keyframes: [{ kind: "peak", timeMs: 500, imagePath: join(home, "preset.png") }],
       annotations: [{ timeMs: 500, text: "The badge expands here." }],
+      visualFontMatch: {
+        family: "Georgia", face: "Bold Italic", postScriptName: "Georgia-BoldItalic",
+        region: { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
+      },
     },
   };
   await writeFile(preset.evidence.keyframes[0].imagePath, Buffer.from(latestFrame.data, "base64"));
@@ -242,6 +262,7 @@ test("archived briefs remain readable by ID after a newer brief is shared", { ti
   const saved = await client.callTool({ name: "poach_read_brief", arguments: { briefId: preset.briefId } });
   assert.ok(!saved.isError);
   assert.equal(saved.structuredContent.briefId, preset.briefId);
+  assert.deepEqual(saved.structuredContent.evidence.visualFontMatch, preset.evidence.visualFontMatch);
   assert.deepEqual(saved.structuredContent.evidence.annotations, preset.evidence.annotations);
   assert.equal(saved.content.find(item => item.type === "image")?.data, latestFrame.data);
   const savedMoment = await client.callTool({ name: "poach_read_moment", arguments: { briefId: preset.briefId, timeMs: 500 } });

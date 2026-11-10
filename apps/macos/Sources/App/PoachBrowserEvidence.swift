@@ -55,6 +55,11 @@ struct PoachBrowserEvidence: Codable {
     // Add this offset to Chrome's atMs values to estimate positions in the video.
     var videoOffsetMs: Int?
 
+    var stylesAtCaptureStart: [String: String] {
+        let captureStartMs = -(videoOffsetMs ?? 0)
+        return (states.last { $0.atMs <= captureStartMs } ?? states.first)?.styles ?? [:]
+    }
+
     static let byteLimit = 256 * 1024
 
     static func decode(_ data: Data) throws -> Self {

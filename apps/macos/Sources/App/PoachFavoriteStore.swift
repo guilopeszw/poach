@@ -230,7 +230,7 @@ enum PoachFavoriteStore {
         PoachInspection(mediaType: inspection.mediaType, sourcePath: "", durationMs: inspection.durationMs,
                         keyframes: frames, palette: inspection.palette, timing: inspection.timing,
                         pointerTrace: inspection.pointerTrace, annotations: annotations,
-                        browserEvidence: inspection.browserEvidence)
+                        browserEvidence: inspection.browserEvidence, visualFontMatch: inspection.visualFontMatch)
     }
 
     private static func compactPNG(_ imageSource: CGImageSource) throws -> Data {

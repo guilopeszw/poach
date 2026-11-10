@@ -216,12 +216,16 @@ struct PoachApp: App {
             defer { isWorking = false; captureServiceStorage = nil }
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.screenshotRequiresNewerMacOS }
-                let imageURL = try await makeCaptureService().captureScreenshot(mode: captureMode)
+                let screenshot = try await makeCaptureService().captureScreenshot(mode: captureMode)
                 hudWindow.showPreparing("Opening screenshot", stages: InspectionStage.stillImage)
-                let result = try await PoachInspectionRunner.inspect(videoURL: imageURL) { stage in
+                let result = try await PoachInspectionRunner.inspect(videoURL: screenshot.url) { stage in
                     hudWindow.preparation.advance(to: stage)
                 }
-                hudWindow.show(result, original: imageURL)
+                hudWindow.show(
+                    result,
+                    original: screenshot.url,
+                    captureEpochRange: screenshot.capturedAtEpochMs...screenshot.capturedAtEpochMs
+                )
             } catch {
                 hudWindow.dismissPreparing()
                 NSApp.unhide(nil)
@@ -323,7 +327,7 @@ struct PoachApp: App {
             }
             result.pointerTrace = recording.pointerTrace
             Self.captureLog.notice("Recording analysis completed")
-            hudWindow.show(result, original: videoURL, recordingEpochRange: recording.epochRange)
+            hudWindow.show(result, original: videoURL, captureEpochRange: recording.epochRange)
             Self.captureLog.notice("Review editor presented")
         } catch {
             NSApp.unhide(nil)
@@ -681,7 +685,7 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate, Obs
         panel?.close()
     }
 
-    func show(_ result: PoachInspection, original: URL? = nil, recordingEpochRange: ClosedRange<Int>? = nil) {
+    func show(_ result: PoachInspection, original: URL? = nil, captureEpochRange: ClosedRange<Int>? = nil) {
         CaptureStorage.openPaths = [result.sourcePath] + result.keyframes.map(\.imagePath) + [original?.path].compactMap { $0 }
         let palette = result.palette.map { HUDPaletteToken(hex: $0, color: Color(hex: $0)) }
         let panel = self.panel ?? makePanel()
@@ -697,15 +701,17 @@ private final class FloatingHUDWindowController: NSObject, NSWindowDelegate, Obs
             availableHeight: contentHeight - 32,
             palette: palette,
             pointerTrace: result.pointerTrace,
-            recordingEpochRange: recordingEpochRange,
-            onShareContext: { context, annotations, browserEvidence in
+            captureEpochRange: captureEpochRange,
+            onShareContext: { context, annotations, browserEvidence, fontMatch in
                 var handoff = result
                 handoff.browserEvidence = browserEvidence
+                handoff.visualFontMatch = fontMatch
                 return try PoachHandoff.share(handoff, context: context, annotations: annotations)
             },
-            onSaveFavorite: { name, context, annotations, browserEvidence in
+            onSaveFavorite: { name, context, annotations, browserEvidence, fontMatch in
                 var handoff = result
                 handoff.browserEvidence = browserEvidence
+                handoff.visualFontMatch = fontMatch
                 return try PoachFavoriteStore.save(name: name, result: handoff, context: context, annotations: annotations)
             },
             onClose: { [weak self] in

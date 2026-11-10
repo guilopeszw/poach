@@ -146,7 +146,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         return SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
     }
 
-    func captureScreenshot(mode: PoachCaptureMode) async throws -> URL {
+    func captureScreenshot(mode: PoachCaptureMode) async throws -> (url: URL, capturedAtEpochMs: Int) {
         let (filter, region) = try await selectTarget(mode: mode, screenshot: true)
         NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
         let sourceSize = region?.rect.size ?? filter.contentRect.size
@@ -160,6 +160,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         configuration.showsCursor = false
         if let region { configuration.sourceRect = region.rect }
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+        let capturedAtEpochMs = Int((Date().timeIntervalSince1970 * 1000).rounded())
         guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
             throw ScreenCaptureError.screenshotUnavailable
         }
@@ -170,7 +171,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         guard fm.createFile(atPath: url.path, contents: png, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
         }
-        return url
+        return (url, capturedAtEpochMs)
     }
 
     func startRecording(mode: PoachCaptureMode, beforeCapture: @MainActor () async throws -> Void) async throws {

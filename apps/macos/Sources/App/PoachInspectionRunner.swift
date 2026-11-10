@@ -33,6 +33,7 @@ struct PoachInspection: Codable {
     var pointerTrace: PointerTrace?
     var annotations: [InteractionAnnotation]?
     var browserEvidence: PoachBrowserEvidence?
+    var visualFontMatch: PoachFontMatch?
 }
 
 struct InteractionAnnotation: Codable {
