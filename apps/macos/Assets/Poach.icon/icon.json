@@ -1,7 +1,7 @@
 {
-  "fill": {"solid": "srgb:0.96863,0.96863,0.96078,1.00000"},
+  "fill": {"solid": "srgb:0.12549,0.14510,0.78431,1.00000"},
   "fill-specializations": [
-    {"appearance": "dark", "value": {"solid": "srgb:0.147,0.147,0.153,1.00000"}}
+    {"appearance": "dark", "value": {"solid": "srgb:0.09020,0.09804,0.50588,1.00000"}}
   ],
   "groups": [{"layers": [{"image-name": "Pouch.png", "name": "Pouch", "glass": false, "position": {"scale": 0.68, "translation-in-points": [0, 0]}}], "name": "Pouch"}],
   "supported-platforms": {"squares": "shared"}
