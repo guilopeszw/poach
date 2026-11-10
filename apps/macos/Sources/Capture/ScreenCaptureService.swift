@@ -106,7 +106,8 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         case .display(let displayID):
             return (try Self.displayFilter(displayID: displayID, content: content), nil)
         case .window(let candidate):
-            guard let window = content.windows.first(where: { $0.windowID == candidate.windowID }) else {
+            // Minimized, hidden or ordered-out windows still exist but would record nothing.
+            guard let window = content.windows.first(where: { $0.windowID == candidate.windowID && $0.isOnScreen }) else {
                 throw ScreenCaptureError.selectionFailed("That window is no longer available.")
             }
             return (SCContentFilter(desktopIndependentWindow: window), nil)

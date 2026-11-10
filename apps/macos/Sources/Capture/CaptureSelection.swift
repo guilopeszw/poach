@@ -92,10 +92,15 @@ final class CaptureSelectionWindowController {
     private func finish(_ result: Result<CaptureTarget, Error>) {
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
-        if case .failure = result {
+        switch result {
+        case .failure:
             NSApp.unhide(nil)
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first(where: { $0.title == "Poach" })?.makeKeyAndOrderFront(nil)
+        case .success:
+            // Hand the keyboard and active appearance back to the app being captured,
+            // so the countdown can be used to prepare it and screenshots look active.
+            NSApp.deactivate()
         }
         continuation?.resume(with: result)
         continuation = nil
@@ -149,6 +154,9 @@ final class CaptureSelectionState: ObservableObject {
     }
 
     func cycle(forward: Bool) {
+        defer {
+            if let targetName { AccessibilityNotification.Announcement(targetName).post() }
+        }
         switch mode {
         case .fullScreen:
             let current = displays.firstIndex { $0.id == displayTarget }
@@ -185,6 +193,10 @@ private final class CaptureSelectionPanel: NSPanel {
 @MainActor
 final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     override var isOpaque: Bool { false }
+
+    /// Overlay controls (such as the countdown ✕) must work on the first click even
+    /// while another app is frontmost.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
