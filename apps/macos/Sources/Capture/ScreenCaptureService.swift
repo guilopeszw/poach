@@ -529,7 +529,7 @@ private final class RegionSelectionPanel: NSPanel {
 }
 
 @MainActor
-private final class TransparentHostingView<Content: View>: NSHostingView<Content> {
+final class TransparentHostingView<Content: View>: NSHostingView<Content> {
     override var isOpaque: Bool { false }
 
     override func viewDidMoveToWindow() {

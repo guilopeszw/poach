@@ -89,6 +89,6 @@ struct PoachCountdown: View {
             .frame(width: 120, height: 120)
             .background(Color(white: 0.22), in: Circle())
             .overlay { Circle().strokeBorder(.red, lineWidth: 4) }
-            .accessibilityLabel("Recording starts in \(count) seconds")
+            .accessibilityLabel("Capture starts in \(count) seconds")
     }
 }
