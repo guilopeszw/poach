@@ -19,7 +19,9 @@ struct FloatingHUDView: View {
     @State private var commentAnchor: Double?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var commentsOpen = false
-    @State private var sidebarWidth: CGFloat = 0
+    @State private var sidebarReserved = false
+    @State private var sidebarRevealed = false
+    private let sidebarMotionDuration = Duration.milliseconds(220)
     private let sidebarFullWidth: CGFloat = 230
     let availableWidth: CGFloat
     let availableHeight: CGFloat
@@ -28,6 +30,10 @@ struct FloatingHUDView: View {
         min(550, availableWidth - (isVideo && !overlaysComments ? sidebarFullWidth : 0))
     }
     private var commentWidth: CGFloat { overlaysComments ? min(260, editorWidth - 42) : sidebarFullWidth }
+    private var commentsLayout: CommentsLayout {
+        guard commentsOpen else { return .closed }
+        return overlaysComments ? .drawer : .sidebar
+    }
     @State private var playback = CommentPlayback()
     let status: InspectionStatus
     let palette: [HUDPaletteToken]
@@ -154,19 +160,19 @@ struct FloatingHUDView: View {
         .frame(width: editorWidth)
         .preferredColorScheme(.light)
         .accessibilityHidden(overlaysComments && commentsOpen)
-        if isVideo && !overlaysComments && sidebarWidth > 0 {
+        if isVideo && !overlaysComments && sidebarReserved {
             commentSidebar(heightLimit: availableHeight)
         }
         }
         .background(PoachPalette.canvas)
         .preferredColorScheme(.light)
-        .frame(width: editorWidth + (overlaysComments ? 0 : sidebarWidth))
+        .frame(width: editorWidth + (!overlaysComments && sidebarReserved ? commentWidth : 0))
         .fixedSize(horizontal: false, vertical: true)
         .overlay(alignment: .trailing) {
-            if overlaysComments && sidebarWidth > 0 {
+            if isVideo && overlaysComments {
                 GeometryReader { geometry in
                     ZStack(alignment: .topTrailing) {
-                        Color.black.opacity(0.12 * sidebarWidth / commentWidth)
+                        Color.black.opacity(sidebarRevealed ? 0.12 : 0)
                             .contentShape(Rectangle())
                             .onTapGesture { commentsOpen = false }
                             .accessibilityHidden(true)
@@ -177,34 +183,30 @@ struct FloatingHUDView: View {
             }
         }
         .clipped()
-        .task(id: commentsOpen ? commentWidth : 0) {
-            let target = commentsOpen ? commentWidth : 0
-            let start = sidebarWidth
-            guard target != start else { return }
-            guard !reduceMotion else { sidebarWidth = target; return }
-            let began = CACurrentMediaTime()
-            while !Task.isCancelled {
-                let t = min(1, (CACurrentMediaTime() - began) / 0.22)
-                let eased = t * t * (3 - 2 * t)
-                sidebarWidth = (start + (target - start) * eased).rounded()
-                if t == 1 { break }
-                do { try await Task.sleep(for: .milliseconds(8)) } catch { return }
+        .task(id: commentsLayout) {
+            switch commentsLayout {
+            case .sidebar where !sidebarReserved:
+                sidebarReserved = true
+                // Reveal after the panel has room for the sidebar.
+            case .sidebar:
+                revealComments(true)
+            case .drawer:
+                sidebarReserved = false
+                revealComments(true)
+            case .closed:
+                revealComments(false)
+                if sidebarReserved && !reduceMotion {
+                    do { try await Task.sleep(for: sidebarMotionDuration) } catch { return }
+                }
+                guard !commentsOpen else { return }
+                sidebarReserved = false
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-            guard let panel = NSApp.windows.first(where: { $0.title == "Poach — Implementation brief" && $0.isVisible }),
-                  panel.contentRect(forFrameRect: panel.frame).size != size else { return }
-            let frameSize = panel.frameRect(forContentRect: CGRect(origin: .zero, size: size)).size
-            var frame = panel.frame
-            if UserDefaults.standard.string(forKey: "windowEdge") != "left" {
-                frame.origin.x = frame.maxX - frameSize.width
+            resizeEditorWindow(to: size)
+            if sidebarReserved && commentsOpen && !sidebarRevealed {
+                revealComments(true)
             }
-            frame.origin.y += (frame.height - frameSize.height) / 2
-            frame.size = frameSize
-            if let visible = panel.screen?.visibleFrame {
-                frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
-            }
-            panel.setFrame(frame, display: true)
         }
         .sheet(isPresented: $showingAssistantSetup) { AssistantSetupView() }
         .task {
@@ -237,15 +239,41 @@ struct FloatingHUDView: View {
         .onDisappear { playback.detach(); player = nil }
     }
 
+    private enum CommentsLayout {
+        case closed, drawer, sidebar
+    }
+
+    private func revealComments(_ reveal: Bool) {
+        guard sidebarRevealed != reveal else { return }
+        withAnimation(reduceMotion ? nil : .timingCurve(0.32, 0.72, 0, 1, duration: 0.22)) {
+            sidebarRevealed = reveal
+        }
+    }
+
+    private func resizeEditorWindow(to size: CGSize) {
+        guard let panel = NSApp.windows.first(where: { $0.title == "Poach — Implementation brief" && $0.isVisible }),
+              panel.contentRect(forFrameRect: panel.frame).size != size else { return }
+        let frameSize = panel.frameRect(forContentRect: CGRect(origin: .zero, size: size)).size
+        var frame = panel.frame
+        if UserDefaults.standard.string(forKey: "windowEdge") != "left" {
+            frame.origin.x = frame.maxX - frameSize.width
+        }
+        frame.origin.y += (frame.height - frameSize.height) / 2
+        frame.size = frameSize
+        if let visible = panel.screen?.visibleFrame {
+            frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+        }
+        panel.setFrame(frame, display: true)
+    }
+
     private func commentSidebar(heightLimit: CGFloat) -> some View {
         CommentSidebar(playback: playback, comments: $comments, draft: $commentDraft,
                        anchor: $commentAnchor, heightLimit: heightLimit,
                        onClose: overlaysComments ? { commentsOpen = false } : nil)
             .frame(width: commentWidth)
             .overlay(alignment: .leading) { Divider() }
-            .frame(width: overlaysComments ? commentWidth : sidebarWidth, alignment: .leading)
+            .offset(x: sidebarRevealed ? 0 : commentWidth)
             .clipped()
-            .offset(x: overlaysComments ? commentWidth - sidebarWidth : 0)
             .allowsHitTesting(commentsOpen)
             .accessibilityHidden(!commentsOpen)
     }
