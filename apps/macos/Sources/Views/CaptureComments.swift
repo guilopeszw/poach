@@ -221,11 +221,11 @@ struct CommentTimeline: View {
 struct CommentSidebar: View {
     let playback: CommentPlayback
     @Binding var comments: [CaptureComment]
+    @Binding var draft: String
+    @Binding var anchor: Double?
     var heightLimit: CGFloat = 410
     var onClose: (() -> Void)?
     @State private var hovered: UUID?
-    @State private var draft = ""
-    @State private var anchor: Double?
     @FocusState private var composing: Bool
 
     var body: some View {

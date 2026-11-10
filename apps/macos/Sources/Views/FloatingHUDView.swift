@@ -15,6 +15,8 @@ struct FloatingHUDView: View {
     @Environment(\.poachDesignFixture) private var designFixture
     #endif
     @State private var comments: [CaptureComment] = []
+    @State private var commentDraft = ""
+    @State private var commentAnchor: Double?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var commentsOpen = false
     @State private var sidebarWidth: CGFloat = 0
@@ -63,7 +65,8 @@ struct FloatingHUDView: View {
 
             VStack(alignment: .leading, spacing: 9) {
                 Text("Palette").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                HStack(spacing: 7) {
+                let columns = max(1, min(palette.count, editorWidth < 360 ? 3 : 6))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 7), count: columns), spacing: 8) {
                     ForEach(palette) { token in
                         VStack(alignment: .leading, spacing: 5) {
                             ColorPicker("Replace \(token.hex)", selection: Binding(
@@ -235,7 +238,8 @@ struct FloatingHUDView: View {
     }
 
     private func commentSidebar(heightLimit: CGFloat) -> some View {
-        CommentSidebar(playback: playback, comments: $comments, heightLimit: heightLimit,
+        CommentSidebar(playback: playback, comments: $comments, draft: $commentDraft,
+                       anchor: $commentAnchor, heightLimit: heightLimit,
                        onClose: overlaysComments ? { commentsOpen = false } : nil)
             .frame(width: commentWidth)
             .overlay(alignment: .leading) { Divider() }
