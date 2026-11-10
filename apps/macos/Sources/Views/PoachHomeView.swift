@@ -208,14 +208,16 @@ struct PoachHomeView: View {
     }
 }
 
-private nonisolated struct DropRejectionShake: ViewModifier, Animatable {
+private struct DropRejectionShake: Animatable {
     var phase: Double
 
     var animatableData: Double {
         get { phase }
         set { phase = newValue }
     }
+}
 
+extension DropRejectionShake: ViewModifier {
     func body(content: Content) -> some View {
         let progress = phase - floor(phase)
         let swing = sin(progress * 6 * .pi) * (1 - progress)
