@@ -201,16 +201,18 @@ server.registerTool("poach_read_brief", {
         }
       }
       if (brief.evidence.mediaType === "video" && typeof brief.evidence.sourcePath === "string") {
-        const releases = responseBrief.evidence.interactionActions.actions
-          .filter((action) => action.kind === "drag" && action.releaseWithinCapture);
+        const drags = responseBrief.evidence.interactionActions.actions.filter((action) => action.kind === "drag");
+        const releases = drags.filter((action) => action.releaseWithinCapture);
+        const dragStarts = drags.map((action) => action.timeMs).sort((first, second) => first - second);
         const recentReleases = releases.slice(-3);
         if (recentReleases.length < releases.length) {
           content.push({ type: "text", text: "Frames are included for the three latest drag releases inside the capture. Use poach_read_moment for earlier candidates." });
         }
-        for (const [index, release] of recentReleases.entries()) {
+        for (const release of recentReleases) {
           const releaseTimeMs = release.timeMs + release.durationMs;
+          const nextDragTimeMs = dragStarts.find((start) => start > releaseTimeMs);
           try {
-            const sequence = await readDragReleaseFrames(brief.evidence.sourcePath, releaseTimeMs, recentReleases[index + 1]?.timeMs);
+            const sequence = await readDragReleaseFrames(brief.evidence.sourcePath, releaseTimeMs, nextDragTimeMs);
             const tailMs = sequence.endTimeMs - releaseTimeMs;
             content.push({ type: "text", text: tailMs > 0
               ? `Drag release candidate at ${releaseTimeMs} ms. Compare the frames before and after release to identify visible changes. A release does not by itself prove the drop was accepted. Evidence extends ${tailMs} ms after release, up to the next sampled drag or end of the clip.`

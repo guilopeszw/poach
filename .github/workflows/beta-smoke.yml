@@ -151,9 +151,9 @@ jobs:
             assert.ok(!brief.isError, JSON.stringify(brief.content));
             assert.equal(brief.structuredContent.briefId, briefId);
             const legacyBeta = /^v0\.1\.0-beta\.[1-4]$/.test(process.env.RELEASE_TAG ?? '');
-            assert.equal(brief.content.filter(item => item.type === 'image').length, legacyBeta ? 1 : 4);
+            assert.equal(brief.content.filter(item => item.type === 'image').length, legacyBeta ? 1 : 3);
             if (!legacyBeta) {
-              assert.ok(brief.content.some(item => item.type === 'text' && item.text.startsWith('After drag release:')));
+              assert.ok(brief.content.some(item => item.type === 'text' && item.text.startsWith('After drag release: 599 ms')));
             }
             assert.equal(brief.structuredContent.evidence.annotations[0].timeMs, 500);
             assert.equal(brief.structuredContent.evidence.annotations[0].text, 'The card lands in Done.');
