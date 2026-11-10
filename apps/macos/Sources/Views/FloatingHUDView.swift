@@ -41,7 +41,6 @@ struct FloatingHUDView: View {
     var onShareContext: (String, [InteractionAnnotation], PoachBrowserEvidence?) throws -> String
     var onSaveFavorite: ((String, String, [InteractionAnnotation], PoachBrowserEvidence?) throws -> UUID)?
     @State private var browserEvidence: PoachBrowserEvidence?
-    @State private var ignoresChromeEvidence = false
     @State private var favoriteID: UUID?
     @State private var showingSaveFavorite = false
     @State private var favoriteName = ""
@@ -84,7 +83,7 @@ struct FloatingHUDView: View {
                         VStack(alignment: .leading, spacing: 5) {
                             ColorPicker("Replace \(token.hex)", selection: Binding(
                                 get: { colorOverrides[token.hex] ?? token.color },
-                                set: { colorOverrides[token.hex] = $0; shareStatus = "Changes have not been shared yet." }
+                                set: { colorOverrides[token.hex] = $0; shareStatus = "" }
                             ), supportsOpacity: false)
                             .labelsHidden()
                             Text(hex(colorOverrides[token.hex] ?? token.color))
@@ -125,7 +124,7 @@ struct FloatingHUDView: View {
                             .allowsHitTesting(false)
                     }
                     .accessibilityLabel("Change notes (optional)")
-                    .onChange(of: context) { shareStatus = "Changes have not been shared yet." }
+                    .onChange(of: context) { shareStatus = "" }
             }
 
             if recordingEpochRange != nil { browserEvidenceControl }
@@ -234,7 +233,7 @@ struct FloatingHUDView: View {
         } message: {
             Text("Keep this handoff and its reference frames for later.")
         }
-        .onChange(of: comments) { shareStatus = "Changes have not been shared yet." }
+        .onChange(of: comments) { shareStatus = "" }
         .onAppear(perform: refreshChromeEvidence)
         .onChange(of: PoachChromeBridge.shared.revision) { refreshChromeEvidence() }
         .onDisappear { playback.detach(); player = nil }
@@ -400,30 +399,31 @@ struct FloatingHUDView: View {
     private var browserEvidenceControl: some View {
         if let browserEvidence {
             HStack(spacing: 6) {
-                Label("Chrome evidence", systemImage: "checkmark.circle")
-                    .font(.caption.weight(.medium))
-                Text(browserEvidence.origin).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Button {
-                    ignoresChromeEvidence = true
-                    self.browserEvidence = nil
-                } label: {
-                    Image(systemName: "xmark.circle")
+                Label {
+                    Text("Chrome evidence included")
+                        .fontWeight(.medium)
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color(red: 0.17, green: 0.42, blue: 0.30))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove Chrome evidence")
+                Text(browserEvidence.origin).foregroundStyle(.secondary).lineLimit(1)
             }
-        } else if !ignoresChromeEvidence, let recordingEpochRange,
-                  PoachChromeBridge.shared.isReceiving(for: recordingEpochRange) {
+            .font(.caption)
+        } else if let recordingEpochRange, PoachChromeBridge.shared.isReceiving(for: recordingEpochRange) {
             Label("Receiving Chrome evidence…", systemImage: "network")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        } else {
+            Label(PoachChromeBridge.shared.missingEvidenceReason, systemImage: "xmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(PoachPalette.errorText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func refreshChromeEvidence() {
-        guard !ignoresChromeEvidence, let recordingEpochRange,
-              let evidence = PoachChromeBridge.shared.evidence(for: recordingEpochRange) else { return }
-        browserEvidence = evidence
+        guard browserEvidence == nil, let recordingEpochRange else { return }
+        browserEvidence = PoachChromeBridge.shared.evidence(for: recordingEpochRange)
     }
 
     private var header: some View {

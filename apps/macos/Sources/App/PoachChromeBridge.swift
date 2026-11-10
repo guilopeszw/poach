@@ -10,6 +10,7 @@ final class PoachChromeBridge {
     @ObservationIgnored var openCapture: (() -> Bool)?
     private(set) var captureRequest = 0
     private(set) var errorMessage: String?
+    private var pairingCodeRejected = false
     private var incoming: PoachBrowserEvidence?
     @ObservationIgnored private var incomingExpiry: Task<Void, Never>?
     private var latest: PoachBrowserEvidence?
@@ -62,6 +63,13 @@ final class PoachChromeBridge {
         return incoming?.aligned(to: recording) != nil
     }
 
+    var missingEvidenceReason: String {
+        if let errorMessage { return errorMessage }
+        if code == nil { return "Pair Chrome in Poach Settings to add browser evidence." }
+        if pairingCodeRejected { return "Chrome’s pairing code is outdated. Pair again from Poach Settings." }
+        return "No Chrome capture matched this recording. Start and finish a capture in the Poach extension."
+    }
+
     private func accept(_ connection: NWConnection) {
         connection.start(queue: .main)
         let timeout = Task {
@@ -109,7 +117,14 @@ final class PoachChromeBridge {
             guard headers[name] == nil else { return "400 Bad Request" }
             headers[name] = line[line.index(after: delimiter)...].trimmingCharacters(in: .whitespaces)
         }
-        guard let code, headers["authorization"] == "Bearer \(code)" else { return "401 Unauthorized" }
+        guard let code, headers["authorization"] == "Bearer \(code)" else {
+            if let authorization = headers["authorization"], authorization.hasPrefix("Bearer "),
+               UUID(uuidString: String(authorization.dropFirst(7))) != nil {
+                pairingCodeRejected = true
+            }
+            return "401 Unauthorized"
+        }
+        pairingCodeRejected = false
         if lines.first == "GET /v1/pair HTTP/1.1" { return "204 No Content" }
         if lines.first == "POST /v1/open-capture HTTP/1.1" {
             guard openCapture?() == true else { return "503 Service Unavailable" }
