@@ -52,7 +52,7 @@ struct PoachApp: App {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Button("Take screenshot…", action: takeScreenshot)
+                Button("Take screenshot", action: takeScreenshot)
                     .buttonStyle(.plain)
                     .disabled(isWorking || isRecording)
 

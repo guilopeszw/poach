@@ -39,7 +39,7 @@ struct PoachHomeView: View {
     private var primaryTitle: String {
         if isRecording { return "Stop and inspect · \(clock(elapsedSeconds)) / 0:30" }
         if isWorking && loadingFile == nil { return workingTitle }
-        return captureType == .screenshot ? "Take screenshot…" : "Record…"
+        return captureType == .screenshot ? "Take screenshot" : "Record"
     }
 
     var body: some View {
