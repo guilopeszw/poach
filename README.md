@@ -1,4 +1,4 @@
-<p align="center"><img src="apps/macos/Assets/PoachIcon.png" width="88" alt="Poach pouch icon"></p>
+<p align="center"><img src="docs/media/poach-logo.png" width="88" alt="Orange Poach pouch on a cobalt tile"></p>
 <h1 align="center">Poach</h1>
 <p align="center">A lightweight Mac app for the UI you wish you’d made.</p>
 <p align="center"><strong><a href="https://github.com/guilopeszw/poach/releases/download/v1.0.0/Poach-arm64.zip">Download for Apple silicon</a></strong></p>
