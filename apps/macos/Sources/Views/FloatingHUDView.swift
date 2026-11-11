@@ -76,7 +76,7 @@ struct FloatingHUDView: View {
                 if isVideo {
                     CaptureVideoPlayer(player: player)
                         .aspectRatio(16 / 9, contentMode: .fit)
-                        .clipShape(RoundedRectangle.poach(PoachRadius.container))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else if let image = NSImage(contentsOf: sourceURL) {
                     Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
                     if selectingFont {
@@ -136,9 +136,9 @@ struct FloatingHUDView: View {
                                 .accessibilityHidden(true)
                         }
                     }
-                    .background(PoachPalette.panel, in: RoundedRectangle.poach(PoachRadius.small))
+                    .background(PoachPalette.panel, in: RoundedRectangle(cornerRadius: 6))
                     .overlay {
-                        RoundedRectangle.poach(PoachRadius.small)
+                        RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(PoachPalette.outline, lineWidth: 1)
                             .allowsHitTesting(false)
                     }
@@ -331,7 +331,7 @@ struct FloatingHUDView: View {
         .buttonStyle(.plain)
         .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(connected ? .white : Color.secondary)
-        .background(connected ? PoachPalette.ink : Color(white: 0.85), in: Capsule())
+        .background(connected ? PoachPalette.ink : Color(white: 0.85), in: RoundedRectangle(cornerRadius: 9))
         .disabled(!connected)
         .task(id: copyFeedback) {
             guard copyFeedback != nil else { return }

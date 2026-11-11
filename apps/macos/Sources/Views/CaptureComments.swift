@@ -139,7 +139,7 @@ struct CommentTimeline: View {
                         let width = min(200, geometry.size.width)
                         Text(comment.text).font(.caption).lineLimit(2)
                             .padding(6).frame(width: width)
-                            .background(.regularMaterial, in: RoundedRectangle.poach(PoachRadius.small))
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7))
                             .position(x: min(max(width / 2, markerX(comment, width: geometry.size.width)), geometry.size.width - width / 2), y: -32)
                             .allowsHitTesting(false)
                     }
@@ -242,7 +242,7 @@ struct CommentSidebar: View {
                                     Text(comment.text).frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .padding(8)
-                                .background(PoachPalette.canvas, in: RoundedRectangle.poach(PoachRadius.control))
+                                .background(PoachPalette.canvas, in: RoundedRectangle(cornerRadius: 8))
                                 .contentShape(Rectangle())
                             }
                             if hovered == comment.id {
@@ -299,9 +299,9 @@ struct CommentSidebar: View {
             .textFieldStyle(.plain)
             .lineLimit(2...6)
             .padding(8)
-            .background(PoachPalette.canvas, in: RoundedRectangle.poach(PoachRadius.small))
+            .background(PoachPalette.canvas, in: RoundedRectangle(cornerRadius: 6))
             .overlay {
-                RoundedRectangle.poach(PoachRadius.small)
+                RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(composing ? Color.accentColor : PoachPalette.outline)
                     .allowsHitTesting(false)
             }
