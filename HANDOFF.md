@@ -2,11 +2,21 @@
 
 ## Current status
 
-Branch `feat/optional-capture-timer` (local only, not pushed, no PR yet). `origin/main` up to `f11d220` is merged in (`a07395f`).
+Current branch: `feat/home-window-redesign`, on top of `feat/optional-capture-timer` (both local only, not pushed, no PR yet). `origin/main` up to `f11d220` is merged in (`a07395f`).
 
 The optional capture timer, the floating capture pill and the merge with main build cleanly and pass the scripted tests. The hands-on manual pass and the final whole-branch review are still pending.
 
-## What this branch does
+## Home window redesign (`feat/home-window-redesign`)
+
+Branched from `feat/optional-capture-timer` (local only, not pushed); it needs that branch's capture pill, so merge the timer branch first.
+
+- **Shape language** (`Views/PoachControls.swift`): `PoachRadius` has three radii (small 6, control 10, container 14) with continuous corners, replacing nine ad-hoc values. `PoachSegments` and `PoachActionStyle` are capsules, like the capture pill. The editor's handoff bar is a capsule too.
+- **Capture tab** (`Views/PoachHomeView.swift`): the title and the Record / Screenshot switch share a row; the capture source is three icon tiles; the primary button shows ⌘⇧P only when it does what the shortcut does (record a screen area). The bordered drop box is gone: the whole tab accepts a dropped file, shows a dashed "Drop to inspect" overlay while one hovers, and keeps a single "choose a file" line at the bottom.
+- The capture pill is unchanged.
+- Checked in the design lab (`.build/debug/Poach --poach-design-lab`) at 440 pt, 320 pt and the busy state. Not yet checked by hand: a real file drop, the drop rejection message, and the Favorites / Settings tabs with the capsule buttons.
+- Not done from the same idea list: editor hierarchy (rounded preview, circular copyable palette swatches, quieter notes field) and turning the disabled handoff bar into "Connect Codex or Claude".
+
+## What the timer branch does
 
 - **Floating capture pill** (`Views/CapturePill.swift`) with only ⏱ · ● · ✕ (📷 for screenshots). ⏱ expands Off · 3s · 10s over the whole pill. The same pill stays through the countdown (only ✕ active) and the recording (only stop active; the edge fills over 30 s), replacing the old "Recording screen" panel and the countdown ✕. It sits at the bottom centre of the screen, like main's selection controls.
 - **Optional timer** for recordings and screenshots: Off (default), 3s, 10s. The last choice is stored in `UserDefaults` (`captureTimerSeconds`).
