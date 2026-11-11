@@ -10,7 +10,9 @@ The optional capture timer, the floating capture pill and the merge with main bu
 
 Branched from `feat/optional-capture-timer` (local only, not pushed); merge the timer branch first.
 
-- Capture type (Record / Screenshot) and capture source (Screen area / Full screen / App window) are sliding capsule toggles: a grey capsule track with a white thumb that springs to the selected choice (`PoachSegments`, non-underlined style, in `Views/PoachControls.swift`). Icons drop out when a title would otherwise truncate (seen at 320 pt). The header tabs keep the underline style.
+- Capture type (Record / Screenshot) and capture source (Screen area / Full screen / App window) are sliding toggles modeled on Poach brief `9AFBB955…`: a light grey track, a white thumb with a hairline edge and soft shadow, the active label semibold near-black and the others grey. Labels switch at once; only the thumb slides (251 ms, `cubic-bezier(0.16, 1, 0.3, 1)`, off with Reduce Motion). Code: `PoachSegments` pill style in `Views/PoachControls.swift`.
+- The source toggle keeps the original card proportions: three equal 44 pt cells, icon above the title (`stacked: true`). The type toggle is a single 26 pt row; its icons drop out if a title would truncate.
+- Checked in the design lab at 800 pt and 320 pt, including frames captured mid-slide. The header tabs keep the underline style.
 - A wider redesign (three corner radii, capsule controls, window-wide drop target) was tried and reverted at the user's request; everything else in the UI is as on the timer branch.
 
 ## What the timer branch does
