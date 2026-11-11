@@ -37,7 +37,6 @@ struct PoachHomeView: View {
     @State private var dropRejectionPhase = 0.0
     private var highlightDropZone: Bool { (hovering || targeted) && !isWorking && !isRecording }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
 
     @State private var tabSlideOffset: CGFloat = 0
 
@@ -49,7 +48,7 @@ struct PoachHomeView: View {
     }
 
     private var primaryFill: Color {
-        if onCancelSelection != nil { return PoachPalette.solidInk }
+        if onCancelSelection != nil { return PoachPalette.ink }
         if isRecording || captureType == .record { return PoachPalette.recordingRed }
         return PoachPalette.cobalt
     }
@@ -78,15 +77,9 @@ struct PoachHomeView: View {
         .padding(16)
         .frame(width: layoutWidth ?? Self.windowSize.width, height: Self.windowSize.height, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
-        .background {
-            // The whole window is dense glass over the desktop.
-            ZStack {
-                PoachGlassBackdrop(cornerRadius: 0, material: .underWindowBackground)
-                PoachGlassSheen(cornerRadius: 0, shimmer: true, breathing: true, chromatic: true)
-            }
-            .ignoresSafeArea()
-        }
+        .background(PoachPalette.canvas)
         .tint(PoachPalette.ink)
+        .preferredColorScheme(.light)
     }
 
     private var tabSelection: Binding<Tab> {
@@ -161,7 +154,7 @@ struct PoachHomeView: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .medium))
                             .frame(width: 28, height: 28)
-                            .background(PoachGlassFill.control(scheme), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 9))
                             .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
                             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
                             .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
@@ -175,14 +168,13 @@ struct PoachHomeView: View {
                     }
                     .padding(6)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .poachGlass(.card, cornerRadius: 10)
+                    .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
+                                in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(PoachPalette.ink.opacity(highlightDropZone ? 1 : 0), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline)
                             .allowsHitTesting(false)
                     }
-                    // Lift like a glass card while hovered or targeted by a drag.
-                    .offset(y: highlightDropZone && !reduceMotion ? -2 : 0)
                     .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Open an image or video")
