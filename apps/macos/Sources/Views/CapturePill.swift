@@ -101,9 +101,16 @@ struct CapturePill: View {
             Button(action: onPrimary) {
                 Image(systemName: primarySymbol)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(primaryForeground)
                     .frame(width: 44, height: 32)
-                    .background(screenshot ? PoachPalette.ink : Color.red, in: Capsule())
+                    .background(primaryBackground, in: Capsule())
+                    // The white record button needs an edge to stand apart from the white pill.
+                    .overlay {
+                        if primaryBackground == .white {
+                            Capsule().strokeBorder(.black.opacity(0.12), lineWidth: 1)
+                        }
+                    }
+                    .shadow(color: .black.opacity(primaryBackground == .white ? 0.12 : 0), radius: 3, x: 0, y: 1)
                     .contentShape(Capsule())
                     .contentTransition(.symbolEffect(.replace))
             }
@@ -180,6 +187,16 @@ struct CapturePill: View {
     private var primarySymbol: String {
         if isRecording { return "stop.fill" }
         return screenshot ? "camera" : "circle.fill"
+    }
+
+    /// Record: white with a red circle. Stop: red with a white square. Screenshot: ink with a white camera.
+    private var primaryBackground: Color {
+        if isRecording { return .red }
+        return screenshot ? PoachPalette.ink : .white
+    }
+
+    private var primaryForeground: Color {
+        isRecording || screenshot ? .white : .red
     }
 
     private var primaryLabel: String {
