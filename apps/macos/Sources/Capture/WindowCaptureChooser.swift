@@ -190,7 +190,7 @@ private struct WindowPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             ZStack {
-                RoundedRectangle(cornerRadius: 7).fill(PoachPalette.inset)
+                RoundedRectangle.poach(PoachRadius.small).fill(PoachPalette.inset)
                 if let preview {
                     Image(decorative: preview, scale: 1)
                         .resizable()
@@ -202,7 +202,7 @@ private struct WindowPreview: View {
                 }
             }
             .frame(height: 100)
-            .clipShape(.rect(cornerRadius: 7))
+            .clipShape(.poach(PoachRadius.small))
             .accessibilityHidden(true)
 
             HStack(spacing: 6) {
@@ -218,9 +218,9 @@ private struct WindowPreview: View {
             }
         }
         .padding(7)
-        .background(isSelected ? PoachPalette.inset : PoachPalette.panel, in: .rect(cornerRadius: 10))
+        .background(isSelected ? PoachPalette.inset : PoachPalette.panel, in: .poach(PoachRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10).strokeBorder(isSelected ? PoachPalette.ink : PoachPalette.outline)
+            RoundedRectangle.poach(PoachRadius.control).strokeBorder(isSelected ? PoachPalette.ink : PoachPalette.outline)
                 .allowsHitTesting(false)
         }
         .contentShape(Rectangle())

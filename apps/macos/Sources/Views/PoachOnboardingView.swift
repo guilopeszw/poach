@@ -135,7 +135,7 @@ private struct OnboardingFeatureRow: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(PoachPalette.ink)
                 .frame(width: 38, height: 38)
-                .background(tile, in: RoundedRectangle(cornerRadius: 11))
+                .background(tile, in: RoundedRectangle.poach(PoachRadius.control))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
