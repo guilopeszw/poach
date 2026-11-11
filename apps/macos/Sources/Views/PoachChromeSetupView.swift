@@ -85,7 +85,7 @@ struct PoachChromeSetupContent: View {
                             copiedFolder = false
                         }
                         .buttonStyle(PoachActionStyle(
-                            fill: isOnboarding ? PoachPalette.cobalt : PoachPalette.solidInk,
+                            fill: isOnboarding ? PoachPalette.cobalt : PoachPalette.ink,
                             foreground: .white
                         ))
                     }
