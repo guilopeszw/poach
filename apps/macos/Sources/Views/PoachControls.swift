@@ -21,30 +21,24 @@ struct PoachSegments<Value: Hashable>: View {
     var symbol: (Value) -> String? = { _ in nil }
 
     var body: some View {
+        if underlined { underlinedBody } else { pillBody }
+    }
+
+    /// Text tabs with a short bar under the selected one.
+    private var underlinedBody: some View {
         HStack(spacing: 0) {
             ForEach(choices, id: \.0) { value, title in
                 Button {
                     selection = value
                 } label: {
-                    Group {
-                        if let name = symbol(value) {
-                            Label(title, systemImage: name)
-                                .labelStyle(.titleAndIcon)
-                        } else {
-                            Text(title)
-                        }
-                    }
+                    choiceLabel(value, title)
                         .font(.system(size: 12, weight: selection == value ? .semibold : .regular))
                         .foregroundStyle(PoachPalette.ink)
                         .frame(maxWidth: .infinity, minHeight: 22)
                         .background(alignment: .bottom) {
-                            if selection == value && underlined {
+                            if selection == value {
                                 Capsule().fill(PoachPalette.ink)
                                     .frame(width: 22, height: 2)
-                                    .matchedGeometryEffect(id: "selection", in: indicator)
-                            } else if selection == value {
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(Color.white)
                                     .matchedGeometryEffect(id: "selection", in: indicator)
                             }
                         }
@@ -56,9 +50,62 @@ struct PoachSegments<Value: Hashable>: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selection)
         .padding(1)
-        .background(underlined ? Color.clear : PoachPalette.inset, in: RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
+    }
+
+    /// A capsule track with a white thumb that slides to the selected choice.
+    private var pillBody: some View {
+        HStack(spacing: 0) {
+            ForEach(choices, id: \.0) { value, title in
+                let selected = selection == value
+                Button {
+                    selection = value
+                } label: {
+                    choiceLabel(value, title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(selected ? PoachPalette.ink : PoachPalette.ink.opacity(0.5))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(Color.white)
+                                    .overlay { Capsule().strokeBorder(.black.opacity(0.08), lineWidth: 1) }
+                                    .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1)
+                                    .matchedGeometryEffect(id: "selection", in: indicator)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.18), value: selection)
+        .padding(3)
+        .background(PoachPalette.inset, in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+
+    @ViewBuilder
+    private func choiceLabel(_ value: Value, _ title: String) -> some View {
+        if let name = symbol(value) {
+            // Drop the icon before the title would truncate.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 5) {
+                    Image(systemName: name).accessibilityHidden(true)
+                    Text(title)
+                }
+                .fixedSize()
+                Text(title)
+            }
+        } else {
+            Text(title)
+        }
     }
 }
 
