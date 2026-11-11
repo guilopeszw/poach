@@ -132,26 +132,15 @@ struct CapturePill: View {
         }
     }
 
-    /// Off · 3s · 10s, covering the whole pill.
+    /// Off · 3s · 10s, covering the whole pill. A lens marks the choice: press or drag to
+    /// slide it across the options, release to settle and close the timer.
     private var options: some View {
-        HStack(spacing: 4) {
-            ForEach(PoachCaptureTimer.allCases) { option in
-                Button {
-                    storedSeconds = option.rawValue
-                    timerExpanded = false
-                } label: {
-                    Text(option.shortTitle)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(option == timer ? Self.activeTint : Color(white: 0.35))
-                        .frame(maxWidth: .infinity, minHeight: 32)
-                        .background(option == timer ? Self.activeFill : Color.clear, in: Capsule())
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(option.spokenTitle)
-                .accessibilityAddTraits(option == timer ? .isSelected : [])
-            }
-        }
+        CaptureTimerLensPicker(
+            selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
+            tint: Self.activeTint,
+            fill: Self.activeFill,
+            onCommit: { timerExpanded = false }
+        )
         .padding(.horizontal, 8)
         .focusable()
         .focused($optionsFocused)
@@ -160,8 +149,6 @@ struct CapturePill: View {
         .onKeyPress(.rightArrow) { storedSeconds = timer.stepped(by: 1).rawValue; return .handled }
         .onKeyPress(.return) { timerExpanded = false; return .handled }
         .onAppear { optionsFocused = true }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Timer options")
     }
 
     /// While recording, a red line fills the pill's edge over the clip limit.
@@ -218,5 +205,104 @@ struct CapturePill: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// The timer options with a sliding lens, after iOS's glass tab bar: the chosen option sits on a
+/// filled capsule; while pressed, the capsule lifts into a larger white lens that follows the
+/// pointer (and overflows the pill), and the option under it becomes the choice. On release it
+/// settles back onto the option with a spring.
+private struct CaptureTimerLensPicker: View {
+    @Binding var selection: PoachCaptureTimer
+    let tint: Color
+    let fill: Color
+    let onCommit: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Pointer x while pressed; `nil` when the lens rests on `selection`.
+    @State private var dragX: CGFloat?
+
+    private static let restingHeight: CGFloat = 32
+    private static let liftedHeight: CGFloat = 58
+    private static let liftedExtraWidth: CGFloat = 14
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let count = CGFloat(PoachCaptureTimer.allCases.count)
+            let segment = width / count
+            let lifted = dragX != nil
+            let lensWidth = segment + (lifted ? Self.liftedExtraWidth : 0)
+            // While pressed the lens follows the pointer; at rest it centres on the choice.
+            let centre = dragX.map { min(max($0, lensWidth / 2), width - lensWidth / 2) }
+                ?? segment * (CGFloat(selection.index) + 0.5)
+
+            ZStack(alignment: .topLeading) {
+                lens(lifted: lifted)
+                    .frame(width: lensWidth, height: lifted ? Self.liftedHeight : Self.restingHeight)
+                    .position(x: centre, y: geometry.size.height / 2)
+
+                HStack(spacing: 0) {
+                    ForEach(PoachCaptureTimer.allCases) { option in
+                        Text(option.shortTitle)
+                            .font(.system(size: 13, weight: option == selection ? .bold : .semibold))
+                            .foregroundStyle(option == selection ? tint : Color(white: 0.4))
+                            .scaleEffect(lifted && option == selection && !reduceMotion ? 1.18 : 1)
+                            .frame(width: segment, height: geometry.size.height)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        let x = value.location.x
+                        let option = PoachCaptureTimer.option(atX: Double(x), trackWidth: Double(width))
+                        withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                            dragX = x
+                            selection = option
+                        }
+                    }
+                    .onEnded { value in
+                        let option = PoachCaptureTimer.option(atX: Double(value.location.x), trackWidth: Double(width))
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.68)) {
+                            selection = option
+                            dragX = nil
+                        }
+                        // Let the lens settle before the pill folds back.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0 : 0.32)) { onCommit() }
+                    }
+            )
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Timer")
+        .accessibilityValue(selection.spokenTitle)
+        .accessibilityHint("Swipe up or down to change, then press Return")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: selection = selection.stepped(by: 1)
+            case .decrement: selection = selection.stepped(by: -1)
+            @unknown default: break
+            }
+        }
+        .accessibilityAction { onCommit() }
+    }
+
+    /// Resting: a filled capsule. Lifted: a white lens with a bright rim and a soft shadow.
+    @ViewBuilder private func lens(lifted: Bool) -> some View {
+        if lifted {
+            Capsule()
+                .fill(Color.white)
+                .overlay {
+                    Capsule().strokeBorder(
+                        LinearGradient(colors: [.white, .black.opacity(0.14)], startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1.5
+                    )
+                }
+                .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
+        } else {
+            Capsule().fill(fill)
+        }
     }
 }
