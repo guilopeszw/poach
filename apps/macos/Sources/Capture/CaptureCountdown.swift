@@ -132,6 +132,5 @@ private struct CaptureCountdownOverlayView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .allowsHitTesting(false)
-        .preferredColorScheme(.light)
     }
 }
