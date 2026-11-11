@@ -184,9 +184,11 @@ enum PoachFontMatcher {
             context.draw(image, in: rect)
 
             // A single-line selection has background along most of its border.
-            let edge = ((0..<width).map { Int(data[$0]) } +
-                (0..<width).map { Int(data[(height - 1) * width + $0]) } +
-                (0..<height).flatMap { [Int(data[$0 * width]), Int(data[$0 * width + width - 1])] }).sorted()
+            // Typed pieces keep the expression within the compiler's type-checking budget.
+            let topEdge: [Int] = (0..<width).map { Int(data[$0]) }
+            let bottomEdge: [Int] = (0..<width).map { Int(data[(height - 1) * width + $0]) }
+            let sideEdges: [Int] = (0..<height).flatMap { [Int(data[$0 * width]), Int(data[$0 * width + width - 1])] }
+            let edge: [Int] = (topEdge + bottomEdge + sideEdges).sorted()
             let background = edge[edge.count / 2]
             let minGray = (0..<(width * height)).map { Int(data[$0]) }.min() ?? background
             let maxGray = (0..<(width * height)).map { Int(data[$0]) }.max() ?? background
