@@ -13,6 +13,9 @@ The optional capture timer, the floating capture pill and the merge with main bu
 - **Area and full screen** use Poach's own overlay (`Capture/CaptureSelection.swift`) with the pill.
 - **App window** uses main's preview grid (`Capture/WindowCaptureChooser.swift`, from `507bd90`); its footer is now the same pill. The countdown runs after the choice, then the window is checked again and the capture fails with "That window is no longer available." if it was closed or minimized. When Screen Recording access is denied, the system single-window picker is the fallback (main's behavior).
 - **Click-through countdown** (`Capture/CaptureCountdown.swift`): only an outline and the number are shown, and clicks reach other apps. Esc is registered globally only while the countdown runs; the pill's ✕ and ⌘⇧P also cancel.
+- **Timer lens** (`CaptureTimerLensPicker` in `Views/CapturePill.swift`): Off · 3s · 10s on one track; pressing lifts a lens that follows the pointer, releasing settles it with a spring. Modeled on an iOS glass tab bar (Poach brief `6CA090EC…`).
+- **Record button** is white with a red circle; while recording, stop is red with a white square.
+- **Glass UI** (`Views/PoachGlass.swift`): the `glass-refraction` CSS recipe (github.com/Z1Code/glass-refraction, MIT) rebuilt in SwiftUI with dense / card / pill tiers. Used by the capture pill, timer lens, countdown, window chooser and the main Capture window. Neutral `PoachPalette` colors follow light/dark mode; the editor, onboarding and setup sheets still force light mode. Reduce Transparency falls back to solid panels; Reduce Motion stops the shimmer and breathing.
 - **Space** starts from the pill and stops a recording only while the pill is focused (no global Space shortcut).
 - Swift 6.1 build fixes: `@preconcurrency import ScreenCaptureKit`, and a split expression in `PoachFontMatcher.swift` (`f9d4c47`). `main` itself does not build on Swift 6.1 without these.
 
@@ -20,8 +23,9 @@ Design: `docs/superpowers/specs/2026-11-09-optional-capture-timer-design.md`. Pl
 
 ## Next steps
 
-1. Manual pass on the built app: area / full screen / app window × Record / Screenshot × Off / 3s / 10s; Esc, ✕ and ⌘⇧P during a countdown; the menu bar's New Screenshot / New Recording with a timer set.
-2. Final whole-branch review, then open a PR.
+1. Check the glass in light mode and with Reduce Transparency; check that Favorites and Settings read well in dark mode.
+2. Manual pass on the built app: area / full screen / app window × Record / Screenshot × Off / 3s / 10s; Esc, ✕ and ⌘⇧P during a countdown; the menu bar's New Screenshot / New Recording with a timer set.
+3. Final whole-branch review, then open a PR.
 
 ## Open questions and decisions
 
