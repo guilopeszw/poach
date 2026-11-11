@@ -326,6 +326,7 @@ private struct CaptureSelectionView: View {
                 .accessibilityHidden(true)
             }
         }
+        .preferredColorScheme(.light)
         .onExitCommand {
             if state.timerExpanded { state.timerExpanded = false } else { state.cancel() }
         }

@@ -156,10 +156,9 @@ private struct WindowChooserView: View {
         .padding(20)
         .padding(.top, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            PoachGlassBackdrop(cornerRadius: 0, material: .hudWindow).ignoresSafeArea()
-        }
+        .background(PoachPalette.canvas)
         .tint(PoachPalette.ink)
+        .preferredColorScheme(.light)
         .defaultFocus($gridFocused, true)
     }
 
@@ -219,12 +218,10 @@ private struct WindowPreview: View {
             }
         }
         .padding(7)
-        .poachGlass(.card, cornerRadius: 10, hoverable: true)
+        .background(isSelected ? PoachPalette.inset : PoachPalette.panel, in: .rect(cornerRadius: 10))
         .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(PoachPalette.ink, lineWidth: 1.5)
-                    .allowsHitTesting(false)
-            }
+            RoundedRectangle(cornerRadius: 10).strokeBorder(isSelected ? PoachPalette.ink : PoachPalette.outline)
+                .allowsHitTesting(false)
         }
         .contentShape(Rectangle())
         .help(choice.label)
