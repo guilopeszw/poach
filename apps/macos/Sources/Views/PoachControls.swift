@@ -11,24 +11,6 @@ enum PoachPalette {
     static let errorText = Color(red: 180/255, green: 35/255, blue: 30/255)
 }
 
-/// The three corner radii the app uses. Primary actions and segmented controls are capsules,
-/// like the capture pill.
-enum PoachRadius {
-    /// Thumbnails and small inline fields.
-    static let small: CGFloat = 6
-    /// Tiles, rows and text fields.
-    static let control: CGFloat = 10
-    /// Previews and grouped panels.
-    static let container: CGFloat = 14
-}
-
-extension Shape where Self == RoundedRectangle {
-    /// A continuous-corner rectangle, the shape macOS uses for its own controls.
-    static func poach(_ radius: CGFloat) -> RoundedRectangle {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
-    }
-}
-
 struct PoachSegments<Value: Hashable>: View {
     @Namespace private var indicator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -54,28 +36,27 @@ struct PoachSegments<Value: Hashable>: View {
                     }
                         .font(.system(size: 12, weight: selection == value ? .semibold : .regular))
                         .foregroundStyle(PoachPalette.ink)
-                        .frame(maxWidth: .infinity, minHeight: underlined ? 22 : 26)
+                        .frame(maxWidth: .infinity, minHeight: 22)
                         .background(alignment: .bottom) {
                             if selection == value && underlined {
                                 Capsule().fill(PoachPalette.ink)
                                     .frame(width: 22, height: 2)
                                     .matchedGeometryEffect(id: "selection", in: indicator)
                             } else if selection == value {
-                                Capsule()
+                                RoundedRectangle(cornerRadius: 5)
                                     .fill(Color.white)
-                                    .shadow(color: .black.opacity(0.10), radius: 1.5, x: 0, y: 1)
                                     .matchedGeometryEffect(id: "selection", in: indicator)
                             }
                         }
-                        .contentShape(Capsule())
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selection == value ? .isSelected : [])
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selection)
-        .padding(underlined ? 1 : 2)
-        .background(underlined ? Color.clear : PoachPalette.inset, in: Capsule())
+        .padding(1)
+        .background(underlined ? Color.clear : PoachPalette.inset, in: RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
@@ -84,17 +65,15 @@ struct PoachSegments<Value: Hashable>: View {
 struct PoachActionStyle: ButtonStyle {
     var fill = PoachPalette.inset
     var foreground = Color.primary
-    var height: CGFloat = 30
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(enabled ? foreground : Color.secondary)
-            .padding(.horizontal, 14)
-            .frame(height: height)
-            .background(enabled ? fill : Color(white: 0.85), in: Capsule())
-            .contentShape(Capsule())
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background(enabled ? fill : Color(white: 0.85), in: RoundedRectangle(cornerRadius: 9))
             .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }

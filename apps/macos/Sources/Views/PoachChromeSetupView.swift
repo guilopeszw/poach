@@ -33,7 +33,7 @@ struct PoachChromeSetupContent: View {
                     .foregroundStyle(PoachPalette.ink)
                     .frame(width: 44, height: 44)
                     .background(isOnboarding ? PoachOnboardingColors.lime.opacity(0.65) : PoachPalette.inset,
-                                in: RoundedRectangle.poach(PoachRadius.container))
+                                in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -94,8 +94,8 @@ struct PoachChromeSetupContent: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(PoachPalette.panel, in: RoundedRectangle.poach(PoachRadius.container))
-            .overlay { RoundedRectangle.poach(PoachRadius.container).strokeBorder(PoachPalette.outline) }
+            .background(PoachPalette.panel, in: RoundedRectangle(cornerRadius: 13))
+            .overlay { RoundedRectangle(cornerRadius: 13).strokeBorder(PoachPalette.outline) }
 
             if let error = PoachChromeBridge.shared.errorMessage {
                 Text(error).font(.caption).foregroundStyle(PoachPalette.errorText)
