@@ -459,9 +459,7 @@ private final class RecordingStatusWindowController {
                 Text("Finishing…").font(.system(size: 12, weight: .medium))
             }
             .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-            .background(Color.white, in: Capsule())
-            .overlay { Capsule().strokeBorder(.black.opacity(0.15), lineWidth: 1) }
-            .preferredColorScheme(.light)
+            .poachGlass(.dense, cornerRadius: 999)
             .accessibilityElement(children: .combine)
         )
     }
