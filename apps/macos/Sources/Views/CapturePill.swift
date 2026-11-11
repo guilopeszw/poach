@@ -37,6 +37,7 @@ struct CapturePill: View {
 
     @AppStorage(PoachCaptureTimer.storageKey) private var storedSeconds = PoachCaptureTimer.off.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     @FocusState private var optionsFocused: Bool
 
     private static let activeTint = Color(red: 0.77, green: 0.42, blue: 0)
@@ -69,15 +70,10 @@ struct CapturePill: View {
             }
         }
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        .background(Color.white, in: Capsule())
-        .overlay {
-            Capsule().strokeBorder(.black.opacity(0.15), lineWidth: 1).allowsHitTesting(false)
-        }
+        .poachGlass(.dense, cornerRadius: 999)
         .overlay { progressEdge }
         .background { shortcuts }
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
         .animation(reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.1), value: timerExpanded)
-        .preferredColorScheme(.light)
     }
 
     private var buttons: some View {
@@ -87,7 +83,7 @@ struct CapturePill: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(timer == .off ? PoachPalette.ink : Self.activeTint)
                     .frame(width: 44, height: 32)
-                    .background(timer == .off ? Color(white: 0.93) : Self.activeFill, in: Capsule())
+                    .background(timer == .off ? PoachGlassFill.control(scheme) : Self.activeFill, in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -127,7 +123,7 @@ struct CapturePill: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(PoachPalette.ink)
                     .frame(width: 44, height: 32)
-                    .background(Color(white: 0.93), in: Capsule())
+                    .background(PoachGlassFill.control(scheme), in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -192,7 +188,7 @@ struct CapturePill: View {
     /// Record: white with a red circle. Stop: red with a white square. Screenshot: ink with a white camera.
     private var primaryBackground: Color {
         if isRecording { return .red }
-        return screenshot ? PoachPalette.ink : .white
+        return screenshot ? PoachPalette.solidInk : .white
     }
 
     private var primaryForeground: Color {
@@ -236,6 +232,7 @@ private struct CaptureTimerLensPicker: View {
     let onCommit: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     /// Pointer x while pressed; `nil` when the lens rests on `selection`.
     @State private var dragX: CGFloat?
 
@@ -263,7 +260,7 @@ private struct CaptureTimerLensPicker: View {
                     ForEach(PoachCaptureTimer.allCases) { option in
                         Text(option.shortTitle)
                             .font(.system(size: 13, weight: option == selection ? .bold : .semibold))
-                            .foregroundStyle(option == selection ? tint : Color(white: 0.4))
+                            .foregroundStyle(option == selection ? tint : Color.secondary)
                             .scaleEffect(lifted && option == selection && !reduceMotion ? 1.18 : 1)
                             .frame(width: segment, height: geometry.size.height)
                     }
@@ -309,15 +306,11 @@ private struct CaptureTimerLensPicker: View {
     /// Resting: a filled capsule. Lifted: a white lens with a bright rim and a soft shadow.
     @ViewBuilder private func lens(lifted: Bool) -> some View {
         if lifted {
+            // A clear lens: a faint body, a bright refracting rim and chromatic edges.
             Capsule()
-                .fill(Color.white)
-                .overlay {
-                    Capsule().strokeBorder(
-                        LinearGradient(colors: [.white, .black.opacity(0.14)], startPoint: .top, endPoint: .bottom),
-                        lineWidth: 1.5
-                    )
-                }
-                .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
+                .fill(Color.white.opacity(scheme == .dark ? 0.14 : 0.55))
+                .overlay { PoachGlassSheen(cornerRadius: 999, chromatic: true, strongRim: true) }
+                .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.18), radius: 12, x: 0, y: 5)
         } else {
             Capsule().fill(fill)
         }
