@@ -20,6 +20,14 @@ import Foundation
         precondition(PoachCaptureTimer.off.stepped(by: -1) == .off)
         precondition(PoachCaptureTimer.allCases.map(\.shortTitle) == ["Off", "3s", "10s"])
         precondition(PoachCaptureTimer.three.spokenTitle == "3 seconds")
+        // The option under a drag or click across a 150-point track (three 50-point segments).
+        precondition(PoachCaptureTimer.option(atX: 10, trackWidth: 150) == .off)
+        precondition(PoachCaptureTimer.option(atX: 75, trackWidth: 150) == .three)
+        precondition(PoachCaptureTimer.option(atX: 149, trackWidth: 150) == .ten)
+        precondition(PoachCaptureTimer.option(atX: -40, trackWidth: 150) == .off)
+        precondition(PoachCaptureTimer.option(atX: 400, trackWidth: 150) == .ten)
+        precondition(PoachCaptureTimer.option(atX: 20, trackWidth: 0) == .off)
+        precondition(PoachCaptureTimer.ten.index == 2)
     }
 
     private static func targetGeometry() {
