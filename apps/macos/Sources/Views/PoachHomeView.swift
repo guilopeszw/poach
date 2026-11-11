@@ -123,6 +123,7 @@ struct PoachHomeView: View {
 
             PoachSegments(label: "Capture source", selection: $captureMode,
                           choices: PoachCaptureMode.allCases.map { ($0, $0.title) },
+                          stacked: true,
                           symbol: { sourceSymbol($0) })
                 .disabled(isWorking || isRecording)
 

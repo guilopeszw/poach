@@ -18,6 +18,8 @@ struct PoachSegments<Value: Hashable>: View {
     @Binding var selection: Value
     let choices: [(Value, String)]
     var underlined = false
+    /// Icon above the title, in 44 pt cells (the capture source cards).
+    var stacked = false
     var symbol: (Value) -> String? = { _ in nil }
 
     var body: some View {
@@ -54,42 +56,68 @@ struct PoachSegments<Value: Hashable>: View {
         .accessibilityLabel(label)
     }
 
-    /// A capsule track with a white thumb that slides to the selected choice.
+    /// A grey track with a white thumb that slides under the labels.
+    /// The labels switch at once; only the thumb moves (251 ms, ease-out).
     private var pillBody: some View {
-        HStack(spacing: 0) {
+        let index = choices.firstIndex { $0.0 == selection } ?? 0
+        let radius: CGFloat = stacked ? 11 : 14
+        return HStack(spacing: 0) {
             ForEach(choices, id: \.0) { value, title in
                 let selected = selection == value
                 Button {
                     selection = value
                 } label: {
-                    choiceLabel(value, title)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(selected ? PoachPalette.ink : PoachPalette.ink.opacity(0.5))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .padding(.horizontal, 8)
-                        .frame(maxWidth: .infinity, minHeight: 26)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(Color.white)
-                                    .overlay { Capsule().strokeBorder(.black.opacity(0.08), lineWidth: 1) }
-                                    .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1)
-                                    .matchedGeometryEffect(id: "selection", in: indicator)
+                    Group {
+                        if stacked, let name = symbol(value) {
+                            VStack(spacing: 3) {
+                                Image(systemName: name)
+                                    .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                                    .frame(height: 16)
+                                    .accessibilityHidden(true)
+                                Text(title)
+                                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
                             }
+                        } else {
+                            choiceLabel(value, title)
+                                .font(.system(size: 12, weight: selected ? .semibold : .regular))
                         }
-                        .contentShape(Capsule())
+                    }
+                    .foregroundStyle(selected ? Self.selectedText : Self.idleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, minHeight: stacked ? 44 : 26)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .animation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.18), value: selection)
+        .background(alignment: .leading) {
+            GeometryReader { geometry in
+                let width = geometry.size.width / CGFloat(max(choices.count, 1))
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Color.white)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .strokeBorder(Self.thumbEdge, lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
+                    .frame(width: width)
+                    .offset(x: width * CGFloat(index))
+                    .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.251), value: index)
+            }
+        }
         .padding(3)
-        .background(PoachPalette.inset, in: Capsule())
+        .background(Self.track, in: RoundedRectangle(cornerRadius: radius + 3, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
+
+    private static var track: Color { Color(white: 0.92) }
+    private static var thumbEdge: Color { Color(white: 0.84) }
+    private static var selectedText: Color { Color(white: 0.09) }
+    private static var idleText: Color { Color(white: 0.36) }
 
     @ViewBuilder
     private func choiceLabel(_ value: Value, _ title: String) -> some View {
