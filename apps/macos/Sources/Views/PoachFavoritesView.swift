@@ -72,7 +72,7 @@ struct PoachFavoritesView: View {
             Button { copy(favorite) } label: {
                 HStack(spacing: 10) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 5).fill(PoachPalette.inset)
+                        RoundedRectangle.poach(PoachRadius.small).fill(PoachPalette.inset)
                         if let cover = NSImage(contentsOf: favorite.coverURL) {
                             Image(nsImage: cover).resizable().scaledToFit()
                         } else {
@@ -80,7 +80,7 @@ struct PoachFavoritesView: View {
                         }
                     }
                     .frame(width: 62, height: 38)
-                    .clipShape(.rect(cornerRadius: 5))
+                    .clipShape(.poach(PoachRadius.small))
                     .accessibilityHidden(true)
                     Text(favorite.name).font(.subheadline.weight(.medium)).lineLimit(1)
                     Spacer(minLength: 0)
@@ -94,7 +94,7 @@ struct PoachFavoritesView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .background(PoachPalette.panel, in: .rect(cornerRadius: 8))
+            .background(PoachPalette.panel, in: .poach(PoachRadius.control))
             .accessibilityLabel(copied?.favoriteID == favorite.id ? "\(favorite.name), Copied" : "Copy \(favorite.name) handoff")
             Menu {
                 Button("Export Poach…") { export(favorite) }
