@@ -10,7 +10,7 @@ The optional capture timer, the floating capture pill and the merge with main bu
 
 Branched from `feat/optional-capture-timer` (local only, not pushed); merge the timer branch first.
 
-- The capture source bar on the Capture tab is now three small icon buttons (Screen area, Full screen, App window), 44 pt tall, in `PoachHomeView.sourceButton`.
+- Capture type (Record / Screenshot) and capture source (Screen area / Full screen / App window) are sliding capsule toggles: a grey capsule track with a white thumb that springs to the selected choice (`PoachSegments`, non-underlined style, in `Views/PoachControls.swift`). Icons drop out when a title would otherwise truncate (seen at 320 pt). The header tabs keep the underline style.
 - A wider redesign (three corner radii, capsule controls, window-wide drop target) was tried and reverted at the user's request; everything else in the UI is as on the timer branch.
 
 ## What the timer branch does
