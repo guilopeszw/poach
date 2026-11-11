@@ -6,15 +6,12 @@ Current branch: `feat/home-window-redesign`, on top of `feat/optional-capture-ti
 
 The optional capture timer, the floating capture pill and the merge with main build cleanly and pass the scripted tests. The hands-on manual pass and the final whole-branch review are still pending.
 
-## Home window redesign (`feat/home-window-redesign`)
+## Home window: capture source icons (`feat/home-window-redesign`)
 
-Branched from `feat/optional-capture-timer` (local only, not pushed); it needs that branch's capture pill, so merge the timer branch first.
+Branched from `feat/optional-capture-timer` (local only, not pushed); merge the timer branch first.
 
-- **Shape language** (`Views/PoachControls.swift`): `PoachRadius` has three radii (small 6, control 10, container 14) with continuous corners, replacing nine ad-hoc values. `PoachSegments` and `PoachActionStyle` are capsules, like the capture pill. The editor's handoff bar is a capsule too.
-- **Capture tab** (`Views/PoachHomeView.swift`): the title and the Record / Screenshot switch share a row; the capture source is three icon tiles; the primary button shows ⌘⇧P only when it does what the shortcut does (record a screen area). The bordered drop box is gone: the whole tab accepts a dropped file, shows a dashed "Drop to inspect" overlay while one hovers, and keeps a single "choose a file" line at the bottom.
-- The capture pill is unchanged.
-- Checked in the design lab (`.build/debug/Poach --poach-design-lab`) at 440 pt, 320 pt and the busy state. Not yet checked by hand: a real file drop, the drop rejection message, and the Favorites / Settings tabs with the capsule buttons.
-- Not done from the same idea list: editor hierarchy (rounded preview, circular copyable palette swatches, quieter notes field) and turning the disabled handoff bar into "Connect Codex or Claude".
+- The capture source bar on the Capture tab is now three small icon buttons (Screen area, Full screen, App window), 44 pt tall, in `PoachHomeView.sourceButton`.
+- A wider redesign (three corner radii, capsule controls, window-wide drop target) was tried and reverted at the user's request; everything else in the UI is as on the timer branch.
 
 ## What the timer branch does
 
