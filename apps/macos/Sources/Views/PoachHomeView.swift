@@ -121,9 +121,12 @@ struct PoachHomeView: View {
                 .frame(width: 210)
                 .disabled(isWorking || isRecording)
 
-            PoachSegments(label: "Capture source", selection: $captureMode,
-                          choices: PoachCaptureMode.allCases.map { ($0, $0.title) })
-                .disabled(isWorking || isRecording)
+            HStack(spacing: 6) {
+                ForEach(PoachCaptureMode.allCases) { sourceButton($0) }
+            }
+            .disabled(isWorking || isRecording)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Capture source")
 
             Button(action: performCaptureAction) {
                 Label(primaryTitle, systemImage: onCancelSelection != nil ? "xmark" : isRecording ? "stop.fill" : captureType.symbol)
@@ -211,6 +214,48 @@ struct PoachHomeView: View {
             .disabled(isWorking || isRecording)
             }
         }
+    }
+
+    private func sourceSymbol(_ mode: PoachCaptureMode) -> String {
+        switch mode {
+        case .selectedPortion: "rectangle.dashed"
+        case .fullScreen: "display"
+        case .window: "macwindow"
+        }
+    }
+
+    private func sourceButton(_ mode: PoachCaptureMode) -> some View {
+        let selected = captureMode == mode
+        return Button {
+            captureMode = mode
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: sourceSymbol(mode))
+                    .font(.system(size: 14, weight: selected ? .medium : .regular))
+                    .frame(height: 16)
+                    .accessibilityHidden(true)
+                Text(mode.title)
+                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(PoachPalette.ink.opacity(selected ? 1 : 0.7))
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(selected ? Color.white : PoachPalette.inset, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(PoachPalette.ink, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: selected)
+        .accessibilityLabel(mode.title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func rejectDrop(_ message: String) {
