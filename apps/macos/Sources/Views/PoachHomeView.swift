@@ -107,7 +107,7 @@ struct PoachHomeView: View {
     }
 
     static var windowSize: NSSize {
-        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 320)
+        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 324)
     }
 
     private var captureControls: some View {
