@@ -136,7 +136,6 @@ struct PoachApp: App {
                 }
             }
         }
-        .background(PoachWindowCorners())
         .onChange(of: PoachChromeBridge.shared.captureRequest, initial: true) { _, request in
             guard request != handledChromeCaptureRequest else { return }
             handledChromeCaptureRequest = request
@@ -833,26 +832,6 @@ private func windowSnapshot(_ view: NSView) -> NSImage? {
     let image = NSImage(size: view.bounds.size)
     image.addRepresentation(bitmap)
     return image
-}
-
-/// Gives the home window macOS 26's rounder toolbar-window corners. The toolbar is empty
-/// and compact, and the title bar stays transparent, so nothing else changes.
-private struct PoachWindowCorners: NSViewRepresentable {
-    final class Corners: NSView {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            guard let window, window.toolbar == nil else { return }
-            let toolbar = NSToolbar(identifier: "PoachHomeCorners")
-            toolbar.showsBaselineSeparator = false
-            window.toolbar = toolbar
-            window.toolbarStyle = .unifiedCompact
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-        }
-    }
-
-    func makeNSView(context: Context) -> Corners { Corners() }
-    func updateNSView(_ view: Corners, context: Context) {}
 }
 
 private struct HomeWindowAnchor: NSViewRepresentable {
