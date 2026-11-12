@@ -11,9 +11,11 @@ The optional capture timer, the floating capture pill and the merge with main bu
 This branch starts from `feat/optional-capture-timer`. Both are local and not pushed. Merge the timer branch first.
 
 - The capture type (Record, Screenshot) and the capture source (Screen area, Full screen, App window) are sliding toggles. They copy the toggle recorded in Poach brief `9AFBB955…`. A white thumb with a 1 pt grey edge and a soft shadow sits on a light grey track. The active label is semibold near-black, and the others are grey.
-- The labels change as soon as you click. Only the thumb moves, over 251 ms with `cubic-bezier(0.16, 1, 0.3, 1)`. With Reduce Motion on, it jumps without animating. The code is the pill style of `PoachSegments` in `Views/PoachControls.swift`.
+- The thumb glides on a critically damped spring (`.smooth(duration: 0.38)`), which keeps its speed when clicks interrupt each other, and the label colours fade over 0.2 s. The user asked for this to be smoother than the reference's 251 ms ease-out. With Reduce Motion on, it jumps without animating. The code is the pill style of `PoachSegments` in `Views/PoachControls.swift`.
 - The source toggle keeps the original card size. It has three equal 44 pt cells with the icon above the title (`stacked: true`). The type toggle is one 26 pt row with rounded-rectangle corners (8 pt on the thumb, 11 pt on the track), not a capsule, and it hides its icons when a title would otherwise be cut off.
 - The home window is 324 pt tall (was 320) so the taller source cards leave the same 16 pt margin at the bottom as on the sides.
+- The home window has macOS 26's rounder toolbar-window corners: `PoachWindowCorners` in `App/PoachApp.swift` adds an empty `.unifiedCompact` toolbar with a transparent, title-less title bar. Clipping the window ourselves left white slivers of the system border, so that approach was dropped. The compact toolbar makes the top band a little taller.
+- The drop card's outline is dashed while idle and solid while a file hovers over it; the upload icon no longer has a grey fill behind it.
 - I checked both toggles in the design lab at 800 pt and 320 pt, and captured frames while the thumb was moving. The header tabs keep their underline.
 - I tried a wider redesign with three corner radii, capsule controls and a drop target covering the whole window. The user asked to revert it, so the rest of the UI matches the timer branch.
 
