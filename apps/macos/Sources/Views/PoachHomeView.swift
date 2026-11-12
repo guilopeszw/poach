@@ -163,7 +163,7 @@ struct PoachHomeView: View {
                             .accessibilityHidden(true)
                         Text("Drop an image or video")
                             .font(.system(size: 13, weight: .semibold))
-                        Text(dropError ?? "or click to browse")
+                        Text(dropError ?? "or click to browse · ⌘V to paste")
                             .font(.caption)
                             .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.errorText)
                             .multilineTextAlignment(.center)
@@ -215,6 +215,7 @@ struct PoachHomeView: View {
             .disabled(isWorking || isRecording)
             }
         }
+        .background(pasteShortcut)
     }
 
     private func sourceSymbol(_ mode: PoachCaptureMode) -> String {
@@ -222,6 +223,26 @@ struct PoachHomeView: View {
         case .selectedPortion: "rectangle.dashed"
         case .fullScreen: "display"
         case .window: "macwindow"
+        }
+    }
+
+    /// ⌘V on the Capture tab opens a copied image or file like a drop.
+    private var pasteShortcut: some View {
+        Button("Paste image or video", action: pasteMedia)
+            .keyboardShortcut("v", modifiers: .command)
+            .disabled(isWorking || isRecording || loadingFile != nil)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+    }
+
+    private func pasteMedia() {
+        switch PoachPastedMedia.read(from: .general) {
+        case .success(let url):
+            dropError = nil
+            onDropMedia(url)
+        case .failure(let error):
+            rejectDrop(error.message)
         }
     }
 
