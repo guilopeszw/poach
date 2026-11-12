@@ -60,7 +60,7 @@ struct PoachSegments<Value: Hashable>: View {
     /// The labels switch at once; only the thumb moves (251 ms, ease-out).
     private var pillBody: some View {
         let index = choices.firstIndex { $0.0 == selection } ?? 0
-        let radius: CGFloat = stacked ? 11 : 14
+        let radius: CGFloat = stacked ? 11 : 8
         return HStack(spacing: 0) {
             ForEach(choices, id: \.0) { value, title in
                 let selected = selection == value
