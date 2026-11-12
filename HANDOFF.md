@@ -12,7 +12,7 @@ This branch starts from `feat/optional-capture-timer`. Both are local and not pu
 
 - The capture type (Record, Screenshot) and the capture source (Screen area, Full screen, App window) are sliding toggles. They copy the toggle recorded in Poach brief `9AFBB955…`. A white thumb with a 1 pt grey edge and a soft shadow sits on a light grey track. The active label is semibold near-black, and the others are grey.
 - The labels change as soon as you click. Only the thumb moves, over 251 ms with `cubic-bezier(0.16, 1, 0.3, 1)`. With Reduce Motion on, it jumps without animating. The code is the pill style of `PoachSegments` in `Views/PoachControls.swift`.
-- The source toggle keeps the original card size. It has three equal 44 pt cells with the icon above the title (`stacked: true`). The type toggle is one 26 pt row, and it hides its icons when a title would otherwise be cut off.
+- The source toggle keeps the original card size. It has three equal 44 pt cells with the icon above the title (`stacked: true`). The type toggle is one 26 pt row with rounded-rectangle corners (8 pt on the thumb, 11 pt on the track), not a capsule, and it hides its icons when a title would otherwise be cut off.
 - I checked both toggles in the design lab at 800 pt and 320 pt, and captured frames while the thumb was moving. The header tabs keep their underline.
 - I tried a wider redesign with three corner radii, capsule controls and a drop target covering the whole window. The user asked to revert it, so the rest of the UI matches the timer branch.
 
