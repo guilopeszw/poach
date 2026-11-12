@@ -152,10 +152,11 @@ struct PoachHomeView: View {
                     dropError = nil
                     onLoadMedia()
                 } label: {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .medium))
-                            .frame(width: 28, height: 28)
+                            .frame(width: 28, height: 20)
+                            .padding(.bottom, 2)
                             .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
                             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
                             .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
