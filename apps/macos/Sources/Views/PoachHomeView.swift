@@ -156,7 +156,6 @@ struct PoachHomeView: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .medium))
                             .frame(width: 28, height: 28)
-                            .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 9))
                             .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
                             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
                             .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
@@ -173,8 +172,10 @@ struct PoachHomeView: View {
                     .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
                                 in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
+                        // Dashed while idle; solid once a file hovers over it.
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline)
+                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline,
+                                          style: StrokeStyle(lineWidth: 1, dash: highlightDropZone ? [] : [5, 4]))
                             .allowsHitTesting(false)
                     }
                     .contentShape(Rectangle())
