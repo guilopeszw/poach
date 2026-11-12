@@ -16,6 +16,8 @@ This branch starts from `feat/optional-capture-timer`. Both are local and not pu
 - The home window is 324 pt tall (was 320) so the taller source cards leave the same 16 pt margin at the bottom as on the sides.
 - The home window has macOS 26's rounder toolbar-window corners: `PoachWindowCorners` in `App/PoachApp.swift` adds an empty `.unifiedCompact` toolbar with a transparent, title-less title bar. Clipping the window ourselves left white slivers of the system border, so that approach was dropped. The compact toolbar makes the top band a little taller.
 - The drop card's outline is dashed while idle and solid while a file hovers over it; the upload icon no longer has a grey fill behind it.
+- **Paste on the home window:** ⌘V on the Capture tab opens the clipboard like a drop (`PoachPastedMedia` in `App/PoachImportMedia.swift`). One copied image or video file opens as is. Raw image data, such as a ⌃⇧⌘4 screenshot, is saved as `screenshot-<UUID>.png` (mode 0600) in the temporary Poach folder, so **Clear unused captures** covers it. Errors appear in the drop card. Tested with `bash scripts/test-pasted-media.sh` and once by hand in the built app.
+- The drop card's icon sits 4 pt above its title, and its hint reads "or click to browse · ⌘V to paste".
 - I checked both toggles in the design lab at 800 pt and 320 pt, and captured frames while the thumb was moving. The header tabs keep their underline.
 - I tried a wider redesign with three corner radii, capsule controls and a drop target covering the whole window. The user asked to revert it, so the rest of the UI matches the timer branch.
 
@@ -53,6 +55,7 @@ swift build --package-path apps/macos
 bash scripts/test-capture-selection.sh
 bash scripts/test-font-matcher.sh
 bash scripts/test-pointer-trace-buffer.sh
+bash scripts/test-pasted-media.sh
 bash scripts/build-macos-app.sh   # creates outputs/Poach.app
 ```
 
