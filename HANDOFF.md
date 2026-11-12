@@ -6,14 +6,15 @@ Current branch: `feat/home-window-redesign`, on top of `feat/optional-capture-ti
 
 The optional capture timer, the floating capture pill and the merge with main build cleanly and pass the scripted tests. The hands-on manual pass and the final whole-branch review are still pending.
 
-## Home window: capture source icons (`feat/home-window-redesign`)
+## Home window: capture toggles (`feat/home-window-redesign`)
 
-Branched from `feat/optional-capture-timer` (local only, not pushed); merge the timer branch first.
+This branch starts from `feat/optional-capture-timer`. Both are local and not pushed. Merge the timer branch first.
 
-- Capture type (Record / Screenshot) and capture source (Screen area / Full screen / App window) are sliding toggles modeled on Poach brief `9AFBB955…`: a light grey track, a white thumb with a hairline edge and soft shadow, the active label semibold near-black and the others grey. Labels switch at once; only the thumb slides (251 ms, `cubic-bezier(0.16, 1, 0.3, 1)`, off with Reduce Motion). Code: `PoachSegments` pill style in `Views/PoachControls.swift`.
-- The source toggle keeps the original card proportions: three equal 44 pt cells, icon above the title (`stacked: true`). The type toggle is a single 26 pt row; its icons drop out if a title would truncate.
-- Checked in the design lab at 800 pt and 320 pt, including frames captured mid-slide. The header tabs keep the underline style.
-- A wider redesign (three corner radii, capsule controls, window-wide drop target) was tried and reverted at the user's request; everything else in the UI is as on the timer branch.
+- The capture type (Record, Screenshot) and the capture source (Screen area, Full screen, App window) are sliding toggles. They copy the toggle recorded in Poach brief `9AFBB955…`. A white thumb with a 1 pt grey edge and a soft shadow sits on a light grey track. The active label is semibold near-black, and the others are grey.
+- The labels change as soon as you click. Only the thumb moves, over 251 ms with `cubic-bezier(0.16, 1, 0.3, 1)`. With Reduce Motion on, it jumps without animating. The code is the pill style of `PoachSegments` in `Views/PoachControls.swift`.
+- The source toggle keeps the original card size. It has three equal 44 pt cells with the icon above the title (`stacked: true`). The type toggle is one 26 pt row, and it hides its icons when a title would otherwise be cut off.
+- I checked both toggles in the design lab at 800 pt and 320 pt, and captured frames while the thumb was moving. The header tabs keep their underline.
+- I tried a wider redesign with three corner radii, capsule controls and a drop target covering the whole window. The user asked to revert it, so the rest of the UI matches the timer branch.
 
 ## What the timer branch does
 
