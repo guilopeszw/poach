@@ -57,7 +57,7 @@ struct PoachSegments<Value: Hashable>: View {
     }
 
     /// A grey track with a white thumb that slides under the labels.
-    /// The labels switch at once; only the thumb moves (251 ms, ease-out).
+    /// The thumb glides on a smooth spring and the label colours fade with it.
     private var pillBody: some View {
         let index = choices.firstIndex { $0.0 == selection } ?? 0
         let radius: CGFloat = stacked ? 11 : 8
@@ -83,6 +83,7 @@ struct PoachSegments<Value: Hashable>: View {
                         }
                     }
                     .foregroundStyle(selected ? Self.selectedText : Self.idleText)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: selected)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .padding(.horizontal, 6)
@@ -105,7 +106,8 @@ struct PoachSegments<Value: Hashable>: View {
                     .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
                     .frame(width: width)
                     .offset(x: width * CGFloat(index))
-                    .animation(reduceMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.251), value: index)
+                    // A critically damped spring keeps its speed when clicks interrupt each other.
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.38), value: index)
             }
         }
         .padding(3)
