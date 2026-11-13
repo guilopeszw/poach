@@ -5,9 +5,11 @@
 
 <p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach’s editor showing a blue and orange Night Shift Radio player, its color palette, the Snatch font button, and a handoff to Codex."></a></p>
 
-## What does Poach do?
+## Poach with taste
 
-Record how an interface responds to a click, hover, or drag. Poach keeps a local, timestamped pointer trace during native screen recordings, then lets you add notes directly to the video timeline. Share the capture with Codex or Claude so your assistant can inspect the frames, sample-derived click/drag candidates, and your notes while recreating the interaction. Polling can miss or misclassify brief actions, and the trace alone cannot confirm what an action did.
+Taste is still your job. When a hover makes you stop and try it again, record it. Poach gives your coding agent the timing, motion, and little details that made you stop.
+
+During native screen recordings, Poach keeps a local, timestamped pointer trace and lets you add notes directly to the video timeline. Share the capture with Codex or Claude so your assistant can inspect the frames, sample-derived click/drag candidates, and your notes while recreating the interaction. Polling can miss or misclassify brief actions, and the trace alone cannot confirm what an action did.
 
 ## From screen to chat
 
