@@ -29,6 +29,7 @@ struct PoachApp: App {
     @State private var isRecording = false
     @State private var loadingFile: URL?
     @StateObject private var importStatus = InspectionStatus()
+    @State private var isCheckingForUpdates = false
     @State private var elapsedSeconds = 0
 
     var body: some Scene {
@@ -39,6 +40,12 @@ struct PoachApp: App {
         .defaultPosition(.center)
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…", action: checkForUpdates)
+                    .disabled(isWorking || isRecording || isCheckingForUpdates)
+            }
+        }
 
         MenuBarExtra {
             PoachStatusMenu(
@@ -49,6 +56,8 @@ struct PoachApp: App {
                     captureType = type
                     homeTab = .capture
                 },
+                canCheckForUpdates: !isWorking && !isRecording && !isCheckingForUpdates,
+                onCheckForUpdates: checkForUpdates,
                 onStopRecording: { Task { await stopRecording() } }
             )
         } label: {
@@ -56,6 +65,15 @@ struct PoachApp: App {
                 .accessibilityLabel("Poach")
         }
         .menuBarExtraStyle(.menu)
+    }
+
+    private func checkForUpdates() {
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
+        Task {
+            defer { isCheckingForUpdates = false }
+            await PoachUpdates.check()
+        }
     }
 
     @ViewBuilder
@@ -484,6 +502,8 @@ private struct PoachStatusMenu: View {
     let isWorking: Bool
     let isRecording: Bool
     let onSelectCaptureType: (PoachCaptureType) -> Void
+    let canCheckForUpdates: Bool
+    let onCheckForUpdates: () -> Void
     let onStopRecording: () -> Void
 
     var body: some View {
@@ -501,6 +521,9 @@ private struct PoachStatusMenu: View {
         }
 
         Divider()
+
+        Button("Check for Updates…", action: onCheckForUpdates)
+            .disabled(!canCheckForUpdates)
 
         Button("Quit Poach") { NSApp.terminate(nil) }
             .disabled(isWorking || isRecording)
