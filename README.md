@@ -27,7 +27,7 @@ In **Settings → Storage**, see how much space Poach uses and choose **Clear un
 
 ## Install on your Mac
 
-Download the Apple silicon build above, unzip it, and move **Poach.app** to Applications. Choose the connector for your assistant, then open a new chat.
+Download the Apple silicon build above, unzip it, and move **Poach.app** to Applications. To update, choose **Check for Updates…** from the Poach menu. If a newer release is available, download it, quit Poach, and replace the app in Applications. Choose the connector for your assistant, then open a new chat.
 
 | Assistant | Install the MCP connector |
 | --- | --- |

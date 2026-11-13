@@ -183,3 +183,7 @@ Import a screenshot containing one line in a known installed font. Open **Snatch
 ### Smoke-test screenshot capture
 
 On macOS 15 or later, switch to **Screenshot**, choose **Screen area**, **Full screen**, or **App window**, then click **Take screenshot**. Capture a test surface and confirm that the editor opens with its still image and palette. For Screen area, the camera button or Return confirms the selection immediately. Check that Poach’s UI and pointer are absent from the PNG, Escape cancels the area selector, and **Clear unused captures** preserves the open screenshot and screenshots referenced by unexpired handoffs.
+
+## Update checks
+
+Poach checks GitHub only when you choose **Check for Updates…**. It uses the latest published stable release and opens its `Poach-arm64.zip` in the default browser when the release is newer than the installed version. Keep release tags in `vMAJOR.MINOR.PATCH` format and attach the ZIP before publishing. Draft and private releases are unavailable to the unauthenticated check.
