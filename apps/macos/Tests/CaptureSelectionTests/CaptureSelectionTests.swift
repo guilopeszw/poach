@@ -3,6 +3,19 @@ import Foundation
 
 @main enum CaptureSelectionTests {
     static func main() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let pill = CGSize(width: 168, height: 48)
+        // Room below: centred on the area, top edge on the outline.
+        precondition(CaptureTargetGeometry.attachedPillFrame(for: CGRect(x: 200, y: 100, width: 400, height: 300), pillSize: pill, in: screen)
+            == CGRect(x: 316, y: 399, width: 168, height: 48))
+        // No room below: above the area, bottom edge on the outline.
+        precondition(CaptureTargetGeometry.attachedPillFrame(for: CGRect(x: 200, y: 400, width: 400, height: 380), pillSize: pill, in: screen)
+            == CGRect(x: 316, y: 353, width: 168, height: 48))
+        // Near a side edge: stays on screen.
+        precondition(CaptureTargetGeometry.attachedPillFrame(for: CGRect(x: 0, y: 100, width: 60, height: 60), pillSize: pill, in: screen).minX == 8)
+        // Area fills the screen: inside its bottom edge.
+        precondition(CaptureTargetGeometry.attachedPillFrame(for: screen, pillSize: pill, in: screen)
+            == CGRect(x: 416, y: 736, width: 168, height: 48))
         timerModel()
         print("Capture timer model passed.")
         targetGeometry()
