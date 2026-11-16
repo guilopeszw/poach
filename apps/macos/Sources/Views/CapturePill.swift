@@ -251,11 +251,13 @@ private struct CaptureTimerGlyph: View {
                 Capsule()
                     .frame(width: 5, height: 2.2)
                     .offset(y: -10.4)
+                // Same face as the Off · 3s · 10s options.
                 Text("\(timer.seconds)")
-                    .font(.system(size: timer.seconds >= 10 ? 8.5 : 9.5, weight: .bold, design: .rounded).monospacedDigit())
-                    .offset(y: 0.5)
+                    .font(.system(size: timer.seconds >= 10 ? 8.5 : 10, weight: .bold))
             }
             .frame(width: 20, height: 22)
+            // Centre the whole stopwatch, crown included, in the button.
+            .offset(y: 1)
             .accessibilityHidden(true)
         }
     }
