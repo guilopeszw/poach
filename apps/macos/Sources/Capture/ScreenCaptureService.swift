@@ -91,7 +91,10 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         -> (filter: SCContentFilter, selectedRegion: SelectedRegion?) {
         let target = try await CaptureSelectionWindowController.shared.select(mode: mode, screenshot: screenshot)
         if let (outline, screen) = Self.outline(for: target) {
-            try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen, screenshot: screenshot)
+            var isArea = false
+            if case .area = target { isArea = true }
+            try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen,
+                                                            screenshot: screenshot, attachPill: isArea)
         }
         let content: SCShareableContent
         do {
@@ -260,6 +263,13 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
             if Self.isPermissionDenied(error) { throw ScreenCaptureError.permissionDenied }
             throw error
         }
+    }
+
+    /// The recorded area in AppKit global coordinates and its screen; `nil` unless an area is recording.
+    var recordingArea: (CGRect, NSScreen)? {
+        guard let selectedRegion = activeSelectedRegion,
+              let screen = Self.screen(for: selectedRegion.displayID) else { return nil }
+        return (Self.appKitRect(selectedRegion), screen)
     }
 
     func showRecordingAreaShadow() {

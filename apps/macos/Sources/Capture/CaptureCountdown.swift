@@ -19,14 +19,18 @@ final class CaptureCountdownController {
     /// - Parameters:
     ///   - outline: the capture target in AppKit global coordinates.
     ///   - screen: the screen that shows the countdown.
+    ///   - attachPill: keep the pill on the outline, where the area selection showed it.
     /// - Throws: `ScreenCaptureError.selectionCancelled` when cancelled.
-    func run(seconds: Int, outline: CGRect, on screen: NSScreen, screenshot: Bool = false) async throws {
+    func run(seconds: Int, outline: CGRect, on screen: NSScreen, screenshot: Bool = false,
+             attachPill: Bool = false) async throws {
         guard seconds > 0, !isRunning else { return }
         isRunning = true
         cancelled = false
         let model = CaptureCountdownModel(count: seconds)
         let overlay = makeOverlay(screen: screen, outline: outline, model: model)
-        let cancelPanel = makePillPanel(screen: screen, screenshot: screenshot)
+        let pillFrame = attachPill ? CapturePillLayout.panelFrame(attachedTo: outline, on: screen)
+            : CapturePillLayout.panelFrame(on: screen)
+        let cancelPanel = makePillPanel(frame: pillFrame, screenshot: screenshot, outlined: attachPill)
         _ = escape.register { [weak self] in self?.cancel() }
         defer {
             escape.unregister()
@@ -80,8 +84,7 @@ final class CaptureCountdownController {
     }
 
     /// The capture pill in its countdown state: only ✕ is active.
-    private func makePillPanel(screen: NSScreen, screenshot: Bool) -> NSPanel {
-        let frame = CapturePillLayout.panelFrame(on: screen)
+    private func makePillPanel(frame: CGRect, screenshot: Bool, outlined: Bool) -> NSPanel {
         let panel = CountdownPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Poach — Cancel countdown"
         panel.level = .screenSaver
@@ -96,7 +99,9 @@ final class CaptureCountdownController {
             timerExpanded: .constant(false),
             onPrimary: {},
             onCancel: { [weak self] in self?.cancel() }
-        ))
+        )
+        // Same white edge as the area outline it is attached to.
+        .overlay { if outlined { Capsule().strokeBorder(.white, lineWidth: 2).allowsHitTesting(false) } })
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.setFrame(frame, display: true)

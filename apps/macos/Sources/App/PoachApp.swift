@@ -301,7 +301,7 @@ struct PoachApp: App {
                 isRecording = true
                 Self.captureLog.notice("Recording started")
                 elapsedSeconds = 0
-                recordingWindow.show(elapsedSeconds: 0) { Task { await stopRecording() } }
+                recordingWindow.show(elapsedSeconds: 0, attachedTo: service.recordingArea) { Task { await stopRecording() } }
 
                 while isRecording && elapsedSeconds < 30 {
                     try? await Task.sleep(for: .seconds(1))
@@ -426,12 +426,16 @@ private final class RecordingStatusWindowController {
     private var panel: NSPanel?
     private var stopAction: (() -> Void)?
 
-    func show(elapsedSeconds: Int, onStop: @escaping () -> Void) {
+    /// - Parameter area: the recorded area and its screen; the pill then stays on its outline.
+    func show(elapsedSeconds: Int, attachedTo area: (CGRect, NSScreen)? = nil, onStop: @escaping () -> Void) {
         stopAction = onStop
         let panel = self.panel ?? makePanel()
         // The pill stays where the selection pill was, on the screen the person just used.
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        if let screen { panel.setFrame(CapturePillLayout.panelFrame(on: screen), display: true) }
+        if let (rect, screen) = area {
+            panel.setFrame(CapturePillLayout.panelFrame(attachedTo: rect, on: screen), display: true)
+        } else if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+            panel.setFrame(CapturePillLayout.panelFrame(on: screen), display: true)
+        }
         render(elapsedSeconds: elapsedSeconds, in: panel)
         panel.orderFrontRegardless()
         self.panel = panel
