@@ -107,7 +107,7 @@ struct PoachHomeView: View {
     }
 
     static var windowSize: NSSize {
-        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 324)
+        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 348)
     }
 
     private var captureControls: some View {
@@ -115,104 +115,107 @@ struct PoachHomeView: View {
             Text("Capture the screen")
                 .font(.system(size: 19, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
-            PoachSegments(label: "Capture type", selection: $captureType,
-                          choices: PoachCaptureType.allCases.map { ($0, $0.rawValue) },
-                          symbol: { $0.symbol })
-                .frame(width: 236)
-                .disabled(isWorking || isRecording)
+            // Controls sit 16 pt apart, the same as the window margins.
+            VStack(alignment: .leading, spacing: 16) {
+                PoachSegments(label: "Capture type", selection: $captureType,
+                              choices: PoachCaptureType.allCases.map { ($0, $0.rawValue) },
+                              symbol: { $0.symbol })
+                    .frame(width: 236)
+                    .disabled(isWorking || isRecording)
 
-            PoachSegments(label: "Capture source", selection: $captureMode,
-                          choices: PoachCaptureMode.allCases.map { ($0, $0.title) },
-                          stacked: true,
-                          symbol: { sourceSymbol($0) })
-                .disabled(isWorking || isRecording)
+                PoachSegments(label: "Capture source", selection: $captureMode,
+                              choices: PoachCaptureMode.allCases.map { ($0, $0.title) },
+                              stacked: true,
+                              symbol: { sourceSymbol($0) })
+                    .disabled(isWorking || isRecording)
 
-            Button(action: performCaptureAction) {
-                Label(primaryTitle, systemImage: onCancelSelection != nil ? "xmark" : isRecording ? "stop.fill" : captureType.symbol)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PoachActionStyle(fill: primaryFill, foreground: .white))
-            .keyboardShortcut(.defaultAction)
-            .disabled(isWorking && onCancelSelection == nil)
+                Button(action: performCaptureAction) {
+                    Label(primaryTitle, systemImage: onCancelSelection != nil ? "xmark" : isRecording ? "stop.fill" : captureType.symbol)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PoachActionStyle(fill: primaryFill, foreground: .white))
+                .keyboardShortcut(.defaultAction)
+                .disabled(isWorking && onCancelSelection == nil)
 
-            if let loadingFile {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "doc").font(.title2).foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(loadingFile.lastPathComponent).font(.headline).lineLimit(1)
-                        InspectionStatusLabel(status: status, allowsExpansion: false)
+                if let loadingFile {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "doc").font(.title2).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(loadingFile.lastPathComponent).font(.headline).lineLimit(1)
+                            InspectionStatusLabel(status: status, allowsExpansion: false)
+                        }
+                        Spacer()
                     }
-                    Spacer()
-                }
-                .padding(.vertical, 10)
-                .accessibilityElement(children: .contain)
-            } else {
-                Button {
-                    dropError = nil
-                    onLoadMedia()
-                } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 16, weight: .medium))
-                            .frame(width: 28, height: 20)
-                            .padding(.bottom, 2)
-                            .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
-                            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
-                            .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
-                            .accessibilityHidden(true)
-                        Text("Drop an image or video")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(dropError ?? "or click to browse · ⌘V to paste")
-                            .font(.caption)
-                            .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.errorText)
-                            .multilineTextAlignment(.center)
+                    .padding(.vertical, 10)
+                    .accessibilityElement(children: .contain)
+                } else {
+                    Button {
+                        dropError = nil
+                        onLoadMedia()
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .medium))
+                                .frame(width: 28, height: 20)
+                                .padding(.bottom, 2)
+                                .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
+                                .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
+                                .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
+                                .accessibilityHidden(true)
+                            Text("Drop an image or video")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(dropError ?? "or click to browse · ⌘V to paste")
+                                .font(.caption)
+                                .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.errorText)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(6)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
+                                    in: RoundedRectangle(cornerRadius: 9))
+                        .overlay {
+                            // Dashed while idle; solid once a file hovers over it.
+                            RoundedRectangle(cornerRadius: 9)
+                                .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline,
+                                              style: StrokeStyle(lineWidth: 1, dash: highlightDropZone ? [] : [5, 4]))
+                                .allowsHitTesting(false)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .padding(6)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
-                                in: RoundedRectangle(cornerRadius: 9))
-                    .overlay {
-                        // Dashed while idle; solid once a file hovers over it.
-                        RoundedRectangle(cornerRadius: 9)
-                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline,
-                                          style: StrokeStyle(lineWidth: 1, dash: highlightDropZone ? [] : [5, 4]))
-                            .allowsHitTesting(false)
+                    .accessibilityLabel("Open an image or video")
+                    .accessibilityHint(dropError ?? "Choose a file or drop it here")
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: highlightDropZone)
+                .onHover { hovering = $0 }
+                .onDisappear { hovering = false }
+                .buttonStyle(.plain)
+                .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+                    guard !isWorking, !isRecording else { return false }
+                    guard providers.count == 1, let file = providers.first else {
+                        rejectDrop("Drop one file at a time.")
+                        return false
                     }
-                    .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Open an image or video")
-                .accessibilityHint(dropError ?? "Choose a file or drop it here")
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: highlightDropZone)
-            .onHover { hovering = $0 }
-            .onDisappear { hovering = false }
-            .buttonStyle(.plain)
-            .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
-                guard !isWorking, !isRecording else { return false }
-                guard providers.count == 1, let file = providers.first else {
-                    rejectDrop("Drop one file at a time.")
-                    return false
-                }
-                _ = file.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                    let url = data.flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
-                    let error: String?
-                    if let url {
-                        error = PoachImportMedia.rejectionReason(for: url)
-                    } else {
-                        error = "Poach couldn't read this file."
-                    }
-                    DispatchQueue.main.async {
-                        if let error {
-                            rejectDrop(error)
-                        } else if let url {
-                            dropError = nil
-                            onDropMedia(url)
+                    _ = file.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                        let url = data.flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                        let error: String?
+                        if let url {
+                            error = PoachImportMedia.rejectionReason(for: url)
+                        } else {
+                            error = "Poach couldn't read this file."
+                        }
+                        DispatchQueue.main.async {
+                            if let error {
+                                rejectDrop(error)
+                            } else if let url {
+                                dropError = nil
+                                onDropMedia(url)
+                            }
                         }
                     }
+                    return true
                 }
-                return true
-            }
-            .disabled(isWorking || isRecording)
+                .disabled(isWorking || isRecording)
+                }
             }
         }
         .background(pasteShortcut)
