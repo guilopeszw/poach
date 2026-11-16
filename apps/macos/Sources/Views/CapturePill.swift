@@ -16,6 +16,8 @@ enum CapturePillLayout {
     static let size = CGSize(width: 168, height: 48)
     static let bottomInset: CGFloat = 26
     static let sideInset: CGFloat = 18
+    /// Room around the pill in its own panels, so the press lens and the shadow are not clipped.
+    static let panelMargin: CGFloat = 16
 
     /// Bottom corner of `screen`, on the side chosen in Settings (`windowEdge`).
     @MainActor
@@ -23,6 +25,16 @@ enum CapturePillLayout {
         let left = UserDefaults.standard.string(forKey: "windowEdge") == "left"
         let x = left ? screen.frame.minX + sideInset : screen.frame.maxX - size.width - sideInset
         return CGRect(x: x, y: screen.frame.minY + bottomInset, width: size.width, height: size.height)
+    }
+
+    /// `frame(on:)` grown by `panelMargin`; the pill stays centred in it.
+    @MainActor
+    static func panelFrame(on screen: NSScreen) -> CGRect {
+        frame(on: screen).insetBy(dx: -panelMargin, dy: -panelMargin)
+    }
+
+    static var panelSize: CGSize {
+        CGSize(width: size.width + panelMargin * 2, height: size.height + panelMargin * 2)
     }
 }
 
@@ -71,13 +83,9 @@ struct CapturePill: View {
             }
         }
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        .background(Color.white, in: Capsule())
-        .overlay {
-            Capsule().strokeBorder(.black.opacity(0.15), lineWidth: 1).allowsHitTesting(false)
-        }
+        .background { CapturePillGlass() }
         .overlay { progressEdge }
         .background { shortcuts }
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
         .animation(reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.1), value: timerExpanded)
         .preferredColorScheme(.light)
     }
@@ -88,7 +96,7 @@ struct CapturePill: View {
                 CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? PoachPalette.ink : Self.activeTint)
                     .frame(width: 44, height: 32)
-                    .background(timer == .off ? Color(white: 0.93) : Self.activeFill, in: Capsule())
+                    .background(timer == .off ? Color.clear : Self.activeFill, in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -128,7 +136,6 @@ struct CapturePill: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(PoachPalette.ink)
                     .frame(width: 44, height: 32)
-                    .background(Color(white: 0.93), in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -223,6 +230,55 @@ struct CapturePill: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// The pill's glass: a light behind-window blur, a white wash, a rim that is bright on top and
+/// a soft shadow. Inside a regular window (the window chooser), it blurs that window's content.
+struct CapturePillGlass: View {
+    @Environment(\.capturePillBlending) private var blending
+
+    var body: some View {
+        CapturePillBlur(blending: blending)
+            .clipShape(Capsule())
+            .overlay { Capsule().fill(Color.white.opacity(0.38)) }
+            .overlay {
+                Capsule().strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.9), .white.opacity(0.25)], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 1
+                )
+            }
+            .overlay { Capsule().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.14), radius: 12, x: 0, y: 5)
+            .allowsHitTesting(false)
+    }
+}
+
+private struct CapturePillBlur: NSViewRepresentable {
+    let blending: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.state = .active
+        view.appearance = NSAppearance(named: .aqua)
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.blendingMode = blending
+    }
+}
+
+private struct CapturePillBlendingKey: EnvironmentKey {
+    static let defaultValue = NSVisualEffectView.BlendingMode.behindWindow
+}
+
+extension EnvironmentValues {
+    /// `.behindWindow` for the pill's own panels and overlays; `.withinWindow` inside a regular window.
+    var capturePillBlending: NSVisualEffectView.BlendingMode {
+        get { self[CapturePillBlendingKey.self] }
+        set { self[CapturePillBlendingKey.self] = newValue }
     }
 }
 

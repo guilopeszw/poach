@@ -431,7 +431,7 @@ private final class RecordingStatusWindowController {
         let panel = self.panel ?? makePanel()
         // The pill stays where the selection pill was, on the screen the person just used.
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
-        if let screen { panel.setFrame(CapturePillLayout.frame(on: screen), display: true) }
+        if let screen { panel.setFrame(CapturePillLayout.panelFrame(on: screen), display: true) }
         render(elapsedSeconds: elapsedSeconds, in: panel)
         panel.orderFrontRegardless()
         self.panel = panel
@@ -459,8 +459,7 @@ private final class RecordingStatusWindowController {
                 Text("Finishing…").font(.system(size: 12, weight: .medium))
             }
             .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-            .background(Color.white, in: Capsule())
-            .overlay { Capsule().strokeBorder(.black.opacity(0.15), lineWidth: 1) }
+            .background { CapturePillGlass() }
             .preferredColorScheme(.light)
             .accessibilityElement(children: .combine)
         )
@@ -474,7 +473,7 @@ private final class RecordingStatusWindowController {
 
     private func makePanel() -> NSPanel {
         let panel = EditableBriefPanel(
-            contentRect: NSRect(origin: .zero, size: CapturePillLayout.size),
+            contentRect: NSRect(origin: .zero, size: CapturePillLayout.panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false

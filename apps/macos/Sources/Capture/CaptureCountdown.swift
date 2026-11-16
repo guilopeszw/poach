@@ -81,7 +81,7 @@ final class CaptureCountdownController {
 
     /// The capture pill in its countdown state: only ✕ is active.
     private func makePillPanel(screen: NSScreen, screenshot: Bool) -> NSPanel {
-        let frame = CapturePillLayout.frame(on: screen)
+        let frame = CapturePillLayout.panelFrame(on: screen)
         let panel = CountdownPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Poach — Cancel countdown"
         panel.level = .screenSaver

@@ -151,6 +151,8 @@ private struct WindowChooserView: View {
                 onPrimary: { if let selected { onSelect(selected) } },
                 onCancel: onCancel
             )
+            // This pill sits inside a regular window, so its glass blurs the window's content.
+            .environment(\.capturePillBlending, .withinWindow)
             .frame(maxWidth: .infinity)
         }
         .padding(20)
