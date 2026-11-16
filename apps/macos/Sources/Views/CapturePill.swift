@@ -50,6 +50,8 @@ struct CapturePill: View {
     @AppStorage(PoachCaptureTimer.storageKey) private var storedSeconds = PoachCaptureTimer.off.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var optionsFocused: Bool
+    /// Pointer x over the button row while pressed; `nil` when no lens is shown.
+    @State private var lensX: CGFloat?
 
     private static let activeTint = Color(red: 0.77, green: 0.42, blue: 0)
     private static let activeFill = Color(red: 0.99, green: 0.90, blue: 0.78)
@@ -91,12 +93,13 @@ struct CapturePill: View {
     }
 
     private var buttons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: CapturePillLens.spacing) {
             Button { timerExpanded = true } label: {
                 CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? PoachPalette.ink : Self.activeTint)
                     .frame(width: 44, height: 32)
                     .background(timer == .off ? Color.clear : Self.activeFill, in: Capsule())
+                    .scaleEffect(magnification(for: 0))
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -120,6 +123,7 @@ struct CapturePill: View {
                         }
                     }
                     .shadow(color: .black.opacity(primaryBackground == .white ? 0.12 : 0), radius: 3, x: 0, y: 1)
+                    .scaleEffect(magnification(for: 1))
                     .contentShape(Capsule())
                     .contentTransition(.symbolEffect(.replace))
             }
@@ -136,6 +140,7 @@ struct CapturePill: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(PoachPalette.ink)
                     .frame(width: 44, height: 32)
+                    .scaleEffect(magnification(for: 2))
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -145,6 +150,70 @@ struct CapturePill: View {
             .accessibilityLabel(phase == .countdown ? "Cancel countdown" : "Cancel selection")
             .help(phase == .countdown ? "Cancel countdown (Esc)" : "Cancel (Esc)")
         }
+        .overlay { lensLayer }
+    }
+
+    // MARK: Press lens
+
+    /// The button under the lens grows a little, as if seen through it.
+    private func magnification(for slot: Int) -> CGFloat {
+        lensX.map { CapturePillLens.slot(atX: $0) == slot } == true && !reduceMotion ? 1.16 : 1
+    }
+
+    private func isEnabled(slot: Int) -> Bool {
+        switch slot {
+        case 0: isSelecting
+        case 1: primaryEnabled
+        default: cancelEnabled
+        }
+    }
+
+    private func perform(slot: Int) {
+        guard isEnabled(slot: slot) else { return }
+        switch slot {
+        case 0: timerExpanded = true
+        case 1: onPrimary()
+        default: onCancel()
+        }
+    }
+
+    /// Pressing anywhere on the row lifts a glass lens that follows the pointer, after the
+    /// iOS 26 tab bar. Releasing over an enabled button triggers it. The real buttons stay
+    /// underneath for keyboard shortcuts and accessibility.
+    private var lensLayer: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            ZStack(alignment: .topLeading) {
+                if let lensX {
+                    CapturePillLensShape()
+                        .frame(width: CapturePillLens.size.width, height: CapturePillLens.size.height)
+                        .position(x: min(max(lensX, CapturePillLens.size.width / 2 - 6),
+                                         width - CapturePillLens.size.width / 2 + 6),
+                                  y: geometry.size.height / 2)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(width: width, height: geometry.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                            lensX = value.location.x
+                        }
+                    }
+                    .onEnded { value in
+                        let inside = value.location.y > -12 && value.location.y < geometry.size.height + 12
+                        let slot = CapturePillLens.slot(atX: value.location.x)
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.72)) {
+                            lensX = nil
+                        }
+                        if inside { perform(slot: slot) }
+                    }
+            )
+        }
+        .accessibilityHidden(true)
     }
 
     /// Off · 3s · 10s, covering the whole pill. A lens marks the choice: press or drag to
@@ -230,6 +299,41 @@ struct CapturePill: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// Geometry of the press lens over the three 44 pt buttons.
+enum CapturePillLens {
+    static let spacing: CGFloat = 8
+    /// Wider than a button and taller than the pill, so it overflows like the iOS lens.
+    static let size = CGSize(width: 62, height: 58)
+
+    /// 0 = ⏱, 1 = ● / 📷 / ■, 2 = ✕; positions past either end clamp.
+    static func slot(atX x: CGFloat) -> Int {
+        min(max(Int(((x + spacing / 2) / (44 + spacing)).rounded(.down)), 0), 2)
+    }
+}
+
+/// A clear lens: a faint white body, a bright rim that fades downward and a soft shadow.
+private struct CapturePillLensShape: View {
+    var body: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.22))
+            .overlay {
+                Capsule().strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.35), .black.opacity(0.10)],
+                                   startPoint: .top, endPoint: .bottom),
+                    lineWidth: 1.2
+                )
+            }
+            .overlay {
+                // A thin inner glint near the top edge.
+                Capsule()
+                    .inset(by: 3)
+                    .trim(from: 0.55, to: 0.95)
+                    .stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, lineCap: .round))
+            }
+            .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
     }
 }
 
