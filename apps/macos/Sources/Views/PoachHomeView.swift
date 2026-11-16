@@ -173,8 +173,10 @@ struct PoachHomeView: View {
                     .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
                                 in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
+                        // Dashed while idle; solid once a file hovers over it.
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline)
+                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline,
+                                          style: StrokeStyle(lineWidth: 1, dash: highlightDropZone ? [] : [5, 4]))
                             .allowsHitTesting(false)
                     }
                     .contentShape(Rectangle())
