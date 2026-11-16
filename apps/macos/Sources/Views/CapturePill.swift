@@ -33,6 +33,24 @@ enum CapturePillLayout {
         frame(on: screen).insetBy(dx: -panelMargin, dy: -panelMargin)
     }
 
+    /// The pill attached to a selected area (AppKit global coordinates) on `screen`,
+    /// matching where the selection overlay showed it. See `CaptureTargetGeometry.attachedPillFrame`.
+    @MainActor
+    static func frame(attachedTo area: CGRect, on screen: NSScreen) -> CGRect {
+        let bounds = CGRect(origin: .zero, size: screen.frame.size)
+        // To the screen's top-left space and back.
+        let local = CGRect(x: area.minX - screen.frame.minX, y: screen.frame.maxY - area.maxY,
+                           width: area.width, height: area.height)
+        let pill = CaptureTargetGeometry.attachedPillFrame(for: local, pillSize: size, in: bounds)
+        return CGRect(x: screen.frame.minX + pill.minX, y: screen.frame.maxY - pill.maxY,
+                      width: pill.width, height: pill.height)
+    }
+
+    @MainActor
+    static func panelFrame(attachedTo area: CGRect, on screen: NSScreen) -> CGRect {
+        frame(attachedTo: area, on: screen).insetBy(dx: -panelMargin, dy: -panelMargin)
+    }
+
     static var panelSize: CGSize {
         CGSize(width: size.width + panelMargin * 2, height: size.height + panelMargin * 2)
     }

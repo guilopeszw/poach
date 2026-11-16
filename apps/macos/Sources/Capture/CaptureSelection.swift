@@ -245,6 +245,7 @@ private struct CaptureSelectionView: View {
     let screenTopLeft: CGPoint
     @State private var origin: CGPoint?
     @State private var current: CGPoint?
+    @State private var dragging = false
 
     private var dragSelection: CGRect? {
         guard let origin, let current else { return nil }
@@ -300,18 +301,24 @@ private struct CaptureSelectionView: View {
                 .accessibilityElement()
                 .accessibilityLabel(state.mode == .selectedPortion ? "Capture area" : "Capture target")
                 .accessibilityValue(state.targetName ?? "None")
-                .accessibilityHint(state.mode == .selectedPortion ? "Drag to select an area" : "Press Tab to choose the next target")
+                .accessibilityHint(state.mode == .selectedPortion ? "Drag to select an area. The capture controls appear below it." : "Press Tab to choose the next target")
 
-                CapturePill(
-                    phase: .selecting(canStart: canStart),
-                    screenshot: state.screenshot,
-                    timerExpanded: $state.timerExpanded,
-                    onPrimary: start,
-                    onCancel: state.cancel
-                )
-                .padding(.bottom, CapturePillLayout.bottomInset)
-                .padding(.horizontal, CapturePillLayout.sideInset)
-                .frame(maxWidth: .infinity, alignment: UserDefaults.standard.string(forKey: "windowEdge") == "left" ? .leading : .trailing)
+                if state.mode == .selectedPortion {
+                    // Only once an area is chosen, attached to its outline.
+                    if let area = dragSelection, canStart, !dragging {
+                        let frame = CaptureTargetGeometry.attachedPillFrame(
+                            for: area, pillSize: CapturePillLayout.size,
+                            in: CGRect(origin: .zero, size: geometry.size))
+                        pill
+                            .overlay { Capsule().strokeBorder(.white, lineWidth: 2).allowsHitTesting(false) }
+                            .position(x: frame.midX, y: frame.midY)
+                            .transition(.opacity)
+                    }
+                } else {
+                    pill
+                        .padding(.bottom, CapturePillLayout.bottomInset)
+                        .frame(maxWidth: .infinity)
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -332,16 +339,28 @@ private struct CaptureSelectionView: View {
         }
     }
 
+    private var pill: some View {
+        CapturePill(
+            phase: .selecting(canStart: canStart),
+            screenshot: state.screenshot,
+            timerExpanded: $state.timerExpanded,
+            onPrimary: start,
+            onCancel: state.cancel
+        )
+    }
+
     private func selectionGesture(in size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 guard state.mode == .selectedPortion else { return }
+                dragging = true
+                state.timerExpanded = false
                 origin = clamped(value.startLocation, to: size)
                 current = clamped(value.location, to: size)
             }
-            .onEnded { value in
-                guard state.mode != .selectedPortion else { return }
-                state.click(at: global(value.location), displayID: displayID)
+            .onEnded { _ in
+                guard state.mode != .selectedPortion else { return state.point(at: displayID) }
+                withAnimation(.easeOut(duration: 0.15)) { dragging = false }
             }
     }
 
