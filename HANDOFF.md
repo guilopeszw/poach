@@ -22,6 +22,8 @@ This branch starts from `feat/optional-capture-timer`. Both are local and not pu
 - I checked both toggles in the design lab at 800 pt and 320 pt, and captured frames while the thumb was moving. The header tabs keep their underline.
 - I tried a wider redesign with three corner radii, capsule controls and a drop target covering the whole window. The user asked to revert it, so the rest of the UI matches the timer branch.
 
+- **Area pill:** in Screen area mode the capture pill appears only after a drag ends with a valid area (32 × 32 pt or more), centred on the area and attached to its outline: below it, or above it when there is no room, or just inside its bottom edge when the area fills the screen. Its edge overlaps the outline by 1 pt and gets the same 2 pt white stroke, so they read as one shape. Starting a new drag hides it. The countdown and recording pills stay in that same spot (`CapturePillLayout.panelFrame(attachedTo:on:)`); full screen and app window keep the bottom-centre pill. The rule is `CaptureTargetGeometry.attachedPillFrame`, covered by `bash scripts/test-capture-selection.sh`. Not yet checked by hand: the overlay could not be driven by automation.
+
 ## What the timer branch does
 
 - **Floating capture pill** (`Views/CapturePill.swift`) with only ⏱ · ● · ✕ (📷 for screenshots). ⏱ expands Off · 3s · 10s over the whole pill. The same pill stays through the countdown (only ✕ active) and the recording (only stop active; the edge fills over 30 s), replacing the old "Recording screen" panel and the countdown ✕. It sits at the bottom centre of the screen, like main's selection controls.
