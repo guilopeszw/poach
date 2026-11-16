@@ -83,8 +83,7 @@ struct CapturePill: View {
     private var buttons: some View {
         HStack(spacing: 8) {
             Button { timerExpanded = true } label: {
-                Image(systemName: "timer")
-                    .font(.system(size: 15, weight: .semibold))
+                CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? PoachPalette.ink : Self.activeTint)
                     .frame(width: 44, height: 32)
                     .background(timer == .off ? Color(white: 0.93) : Self.activeFill, in: Capsule())
@@ -222,6 +221,32 @@ struct CapturePill: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// ⏱ when the timer is off; with 3s or 10s chosen, the seconds sit inside a stopwatch outline.
+private struct CaptureTimerGlyph: View {
+    let timer: PoachCaptureTimer
+
+    var body: some View {
+        if timer == .off {
+            Image(systemName: "timer")
+                .font(.system(size: 15, weight: .semibold))
+        } else {
+            ZStack {
+                Circle()
+                    .strokeBorder(lineWidth: 1.6)
+                    .frame(width: 18, height: 18)
+                Capsule()
+                    .frame(width: 5, height: 2.2)
+                    .offset(y: -10.4)
+                Text("\(timer.seconds)")
+                    .font(.system(size: timer.seconds >= 10 ? 8.5 : 9.5, weight: .bold, design: .rounded).monospacedDigit())
+                    .offset(y: 0.5)
+            }
+            .frame(width: 20, height: 22)
+            .accessibilityHidden(true)
+        }
     }
 }
 
