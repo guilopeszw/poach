@@ -32,6 +32,7 @@ This branch starts from `feat/optional-capture-timer`. Both are local and not pu
 - **Timer lens** (`CaptureTimerLensPicker` in `Views/CapturePill.swift`): Off · 3s · 10s on one track; pressing lifts a lens that follows the pointer, releasing settles it with a spring. Modeled on an iOS glass tab bar (Poach brief `6CA090EC…`).
 - **Timer button icon:** with Off it shows ⏱; with 3s or 10s it shows a stopwatch outline with the seconds centred inside, in the same bold system face as the Off · 3s · 10s options (`CaptureTimerGlyph`).
 - **Closing the timer options:** they shrink into the ⏱ button's capsule while the labels slide left and fade (`TimerOptionsCollapse`). Opening still grows them out from the left. Checked by building only; the pill appears only during a capture, so the motion still needs a look by hand.
+- **Glass pill, after the iOS 26 tab bar (Poach brief `DECBF599…`):** the pill is a light behind-window blur with a white wash, a bright top rim and a soft shadow (`CapturePillGlass`); inside the window chooser it blurs that window instead (`capturePillBlending`). ⏱ and ✕ are bare icons; the white ● stays raised, and an active timer keeps its orange capsule. Pressing anywhere on the row lifts a clear lens (62 × 58 pt, taller than the pill) that follows the pointer and enlarges the button under it; releasing over an enabled button triggers it (`CapturePillLens`). The real buttons stay underneath for shortcuts and VoiceOver. The pill's own panels are 16 pt larger on every side (`CapturePillLayout.panelFrame`) so the lens and shadow are not clipped. The glass was checked in a throwaway window; the lens drag still needs a look by hand. Hover tooltips on the three buttons no longer show, because the lens layer sits on top.
 - **Record button** is white with a red circle; while recording, stop is red with a white square.
 - **Space** starts from the pill and stops a recording only while the pill is focused (no global Space shortcut).
 - Swift 6.1 build fixes: `@preconcurrency import ScreenCaptureKit`, and a split expression in `PoachFontMatcher.swift` (`f9d4c47`). `main` itself does not build on Swift 6.1 without these.
@@ -45,7 +46,8 @@ Design: `docs/superpowers/specs/2026-11-09-optional-capture-timer-design.md`. Pl
 
 ## Open questions and decisions
 
-- A glass UI after github.com/Z1Code/glass-refraction was tried and reverted at the user's request; the app stays opaque white.
+- A glass UI after github.com/Z1Code/glass-refraction was tried and reverted at the user's request; the main windows stay opaque. The capture pill alone is glass, at the user's request (2026-11-16).
+- The SDK here is macOS 15.5, so the pill's glass uses `NSVisualEffectView` rather than macOS 26's Liquid Glass API. Revisit once the toolchain ships the macOS 26 SDK.
 
 - A global Space shortcut to stop recording was deferred by the user ("for now"); ⌘⇧P is the global stop.
 - During a countdown, Esc cancels the capture instead of closing menus in other apps (accepted trade-off).
