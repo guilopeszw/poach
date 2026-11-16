@@ -61,7 +61,9 @@ struct CapturePill: View {
                 options
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.2, anchor: .leading).combined(with: .opacity),
-                        removal: .scale(scale: 0.2, anchor: .leading).combined(with: .opacity)
+                        // Closing slides the options back into the ⏱ button.
+                        removal: .modifier(active: TimerOptionsCollapse(progress: 1),
+                                           identity: TimerOptionsCollapse(progress: 0))
                     ))
             } else {
                 buttons
@@ -224,6 +226,15 @@ struct CapturePill: View {
     }
 }
 
+/// Where the ⏱ button sits inside the pill: the first of three 44 × 32 buttons, 8 pt apart, centred.
+private enum CapturePillTimerButton {
+    static let size = CGSize(width: 44, height: 32)
+    static var origin: CGPoint {
+        let row = size.width * 3 + 8 * 2
+        return CGPoint(x: (CapturePillLayout.size.width - row) / 2, y: (CapturePillLayout.size.height - size.height) / 2)
+    }
+}
+
 /// ⏱ when the timer is off; with 3s or 10s chosen, the seconds sit inside a stopwatch outline.
 private struct CaptureTimerGlyph: View {
     let timer: PoachCaptureTimer
@@ -247,6 +258,35 @@ private struct CaptureTimerGlyph: View {
             .frame(width: 20, height: 22)
             .accessibilityHidden(true)
         }
+    }
+}
+
+/// Closing the timer options: the pill-wide options shrink into the ⏱ button's capsule
+/// while their labels slide left and fade, so they read as tucking back into the button.
+private struct TimerOptionsCollapse: Animatable {
+    /// 0 shows the full options; 1 has them folded into the ⏱ button.
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+}
+
+extension TimerOptionsCollapse: ViewModifier {
+    func body(content: Content) -> some View {
+        let full = CapturePillLayout.size
+        let button = CapturePillTimerButton.size
+        let origin = CapturePillTimerButton.origin
+        content
+            .offset(x: -progress * (full.width / 2 - origin.x - button.width / 2))
+            .opacity(Double(1 - progress))
+            .mask(alignment: .topLeading) {
+                Capsule()
+                    .frame(width: full.width + (button.width - full.width) * progress,
+                           height: full.height + (button.height - full.height) * progress)
+                    .offset(x: origin.x * progress, y: origin.y * progress)
+            }
     }
 }
 
