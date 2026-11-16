@@ -101,9 +101,9 @@ struct PoachSegments<Value: Hashable>: View {
                     .fill(Color.white)
                     .overlay {
                         RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .strokeBorder(Self.thumbEdge, lineWidth: 1)
+                            .strokeBorder(Self.thumbEdge, lineWidth: 0.5)
                     }
-                    .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 0.5)
                     .frame(width: width)
                     .offset(x: width * CGFloat(index))
                     // A critically damped spring keeps its speed when clicks interrupt each other.
@@ -117,7 +117,7 @@ struct PoachSegments<Value: Hashable>: View {
     }
 
     private static var track: Color { Color(white: 0.92) }
-    private static var thumbEdge: Color { Color(white: 0.84) }
+    private static var thumbEdge: Color { Color(white: 0.82) }
     private static var selectedText: Color { Color(white: 0.09) }
     private static var idleText: Color { Color(white: 0.36) }
 
