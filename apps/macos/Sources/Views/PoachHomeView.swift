@@ -74,7 +74,11 @@ struct PoachHomeView: View {
             .clipped()
             .animation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.18), value: tab)
         }
-        .padding(16)
+        // 8 pt from the window edges, the same as the gaps between controls.
+        // The top keeps 16 pt below the title bar.
+        .padding(.horizontal, 8)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
         .frame(width: layoutWidth ?? Self.windowSize.width, height: Self.windowSize.height, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .background(PoachPalette.canvas)
@@ -107,7 +111,7 @@ struct PoachHomeView: View {
     }
 
     static var windowSize: NSSize {
-        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 324)
+        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 316)
     }
 
     private var captureControls: some View {
