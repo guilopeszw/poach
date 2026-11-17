@@ -324,9 +324,13 @@ struct CapturePill: View {
     }
 }
 
-/// The area pill's entrance: a white drop leaves the outline at `origin`, falls to the pill's
-/// centre, grows into the pill (its white becoming the pill's rim while the glass shows through),
-/// then the buttons fade in. With Reduce Motion the pill simply appears.
+/// The area pill's entrance, like a drop of liquid leaving the selection outline:
+/// 1. the outline swells at `origin` into a drop held by a neck that stretches and snaps
+///    (a metaball: blurred shapes cut at half opacity);
+/// 2. the free drop falls to the pill's centre;
+/// 3. it grows into the pill, its white becoming the pill's rim while the glass shows through;
+/// 4. the buttons fade in.
+/// With Reduce Motion the pill simply appears.
 struct CapturePillDropIn<Pill: View>: View {
     /// Where the drop leaves the outline, in the parent's coordinates.
     let origin: CGPoint
@@ -334,38 +338,107 @@ struct CapturePillDropIn<Pill: View>: View {
     let frame: CGRect
     let pill: (Double) -> Pill
 
-    private enum Stage: Int { case resting, fallen, grown, shown }
-    @State private var stage = Stage.resting
+    @State private var start = Date()
+    @State private var finished = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private static var dropSize: CGFloat { 16 }
+
+    private static var pinch: Double { 0.46 }
+    private static var fall: Double { 0.22 }
+    private static var grow: Double { 0.46 }
+    private static var fade: Double { 0.2 }
+    private static var total: Double { pinch + fall + grow + fade }
+    private static var dropRadius: CGFloat { 8 }
+    private static var pinchDepth: CGFloat { 20 }
 
     var body: some View {
-        let grown = stage.rawValue >= Stage.grown.rawValue
-        let width = grown ? frame.width : Self.dropSize
-        let height = grown ? frame.height : Self.dropSize
-        let centre = stage == .resting ? origin : CGPoint(x: frame.midX, y: frame.midY)
-        ZStack {
-            pill(stage == .shown ? 1 : 0)
-                .mask { Capsule().frame(width: width, height: height) }
-            Capsule()
-                .fill(Color.white.opacity(grown ? 0 : 1))
-                .overlay { Capsule().strokeBorder(.white, lineWidth: 2) }
-                .frame(width: width, height: height)
-                .shadow(color: .black.opacity(grown ? 0 : 0.2), radius: 4, x: 0, y: 2)
-                .allowsHitTesting(false)
+        if reduceMotion {
+            pill(1).position(x: frame.midX, y: frame.midY)
+        } else {
+            TimelineView(.animation(paused: finished)) { timeline in
+                content(at: timeline.date.timeIntervalSince(start))
+            }
+            .task {
+                try? await Task.sleep(for: .seconds(Self.total + 0.05))
+                finished = true
+            }
         }
-        .frame(width: frame.width, height: frame.height)
-        .position(centre)
-        .task {
-            guard !reduceMotion else { stage = .shown; return }
-            // Let the drop show on the outline for a beat, then fall like a drop of water.
-            try? await Task.sleep(for: .milliseconds(40))
-            withAnimation(.easeIn(duration: 0.22)) { stage = .fallen }
-            try? await Task.sleep(for: .milliseconds(220))
-            withAnimation(.spring(duration: 0.42, bounce: 0.18)) { stage = .grown }
-            try? await Task.sleep(for: .milliseconds(240))
-            withAnimation(.easeOut(duration: 0.2)) { stage = .shown }
+    }
+
+    @ViewBuilder
+    private func content(at t: Double) -> some View {
+        let direction: CGFloat = frame.midY >= origin.y ? 1 : -1
+        let pinched = CGPoint(x: origin.x, y: origin.y + direction * Self.pinchDepth)
+        let growStart = Self.pinch + Self.fall
+        ZStack(alignment: .topLeading) {
+            if t < Self.pinch {
+                // The outline swells into a drop on a stretching neck.
+                let p = Self.easeInOut(t / Self.pinch)
+                let centre = CGPoint(x: origin.x, y: origin.y + direction * Self.pinchDepth * p)
+                // Wide and flat at first, rounder as it hangs lower.
+                goo(drop: centre, radius: 3 + (Self.dropRadius - 3) * p, stretch: 1.9 - 0.9 * p, direction: direction)
+            } else if t < growStart {
+                // The free drop falls like water.
+                let f = Self.easeIn((t - Self.pinch) / Self.fall)
+                let centre = CGPoint(x: frame.midX, y: pinched.y + (frame.midY - pinched.y) * f)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: Self.dropRadius * 2, height: Self.dropRadius * 2)
+                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .position(centre)
+            } else {
+                // It grows into the pill; the buttons fade in at the end.
+                let g = Self.spring(min((t - growStart) / Self.grow, 1))
+                let drop = Self.dropRadius * 2
+                let width = max(drop, drop + (frame.width - drop) * g)
+                let height = max(drop, drop + (frame.height - drop) * g)
+                let controls = min(max((t - growStart - Self.grow * 0.6) / Self.fade, 0), 1)
+                pill(controls)
+                    .mask { Capsule().frame(width: width, height: height) }
+                    .position(x: frame.midX, y: frame.midY)
+                Capsule()
+                    .fill(Color.white.opacity(Double(max(0, 1 - g * 1.4))))
+                    .overlay { Capsule().strokeBorder(.white, lineWidth: 2) }
+                    .frame(width: width, height: height)
+                    .position(x: frame.midX, y: frame.midY)
+                    .allowsHitTesting(false)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The outline segment and the drop, blurred and cut at half opacity so they melt together.
+    /// Only the side of the outline facing the pill is drawn; the outline itself stays crisp.
+    private func goo(drop centre: CGPoint, radius: CGFloat, stretch: CGFloat, direction: CGFloat) -> some View {
+        Canvas { context, size in
+            let side = direction > 0
+                ? CGRect(x: 0, y: origin.y, width: size.width, height: max(0, size.height - origin.y))
+                : CGRect(x: 0, y: 0, width: size.width, height: max(0, origin.y))
+            context.clip(to: Path(side))
+            context.addFilter(.alphaThreshold(min: 0.5, color: .white))
+            context.addFilter(.blur(radius: 4))
+            context.drawLayer { layer in
+                layer.fill(Path(CGRect(x: origin.x - 34, y: origin.y - 2, width: 68, height: 4)), with: .color(.white))
+                layer.fill(Path(ellipseIn: CGRect(x: centre.x - radius * stretch, y: centre.y - radius,
+                                                  width: radius * 2 * stretch, height: radius * 2)), with: .color(.white))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private static func easeInOut(_ x: Double) -> CGFloat {
+        let x = min(max(x, 0), 1)
+        return CGFloat(x < 0.5 ? 2 * x * x : 1 - pow(-2 * x + 2, 2) / 2)
+    }
+
+    private static func easeIn(_ x: Double) -> CGFloat {
+        let x = min(max(x, 0), 1)
+        return CGFloat(x * x)
+    }
+
+    /// A soft spring: about 10% overshoot, settled by the end.
+    private static func spring(_ x: Double) -> CGFloat {
+        guard x < 1 else { return 1 }
+        return CGFloat(1 - exp(-5 * x) * cos(7 * x))
     }
 }
 
