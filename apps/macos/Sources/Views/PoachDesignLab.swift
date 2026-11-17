@@ -21,7 +21,7 @@ extension EnvironmentValues {
 
 struct PoachDesignLab: View {
     private enum Surface: String, CaseIterable {
-        case capture = "Capture", editor = "Editor", settings = "Settings", welcome = "Welcome"
+        case capture = "Capture", editor = "Editor", settings = "Settings", welcome = "Welcome", pill = "Pill"
     }
 
     private enum Dataset: String, CaseIterable {
@@ -61,6 +61,8 @@ struct PoachDesignLab: View {
     @State private var homeTab = PoachHomeView.Tab.capture
     @State private var mode = PoachCaptureMode.selectedPortion
     @StateObject private var status = InspectionStatus()
+    @State private var pillTimerExpanded = false
+    @State private var pillTimerOpen = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -111,6 +113,29 @@ struct PoachDesignLab: View {
                 .frame(width: width == 320 ? 320 : 440)
         case .welcome:
             PoachOnboardingView(onContinue: { surface = .capture })
+        case .pill:
+            // A busy backdrop, so the glass's refraction and tint are visible.
+            ZStack {
+                LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                VStack(spacing: 6) {
+                    ForEach(0..<7) { row in
+                        Text(String(repeating: "Poach glass  ", count: 6))
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundStyle(row.isMultiple(of: 2) ? .white : .black.opacity(0.7))
+                            .fixedSize()
+                    }
+                }
+                VStack(spacing: 40) {
+                    CapturePill(phase: .selecting(canStart: true), timerExpanded: $pillTimerExpanded,
+                                onPrimary: {}, onCancel: {})
+                    CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
+                                onPrimary: {}, onCancel: {})
+                    CapturePill(phase: .recording(elapsed: 12, limit: 30), timerExpanded: .constant(false),
+                                onPrimary: {}, onCancel: {})
+                }
+            }
+            .frame(width: 480, height: 360)
+            .clipped()
         }
     }
 
