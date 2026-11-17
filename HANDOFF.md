@@ -53,6 +53,7 @@ Design: `docs/superpowers/specs/2026-11-09-optional-capture-timer-design.md`. Pl
 
 - A global Space shortcut to stop recording was deferred by the user ("for now"); ⌘⇧P is the global stop.
 - During a countdown, Esc cancels the capture instead of closing menus in other apps (accepted trade-off).
+- The selection overlay registers Esc globally too (`CaptureSelectionWindowController.escape`, unregistered in `finish`). macOS keeps the previous app active after ⌘⇧P, so a view-level Esc never fired; and in Screen area mode the pill's ✕ shortcut only exists after a drag. Esc closes the timer options first, then cancels. Checked in the built app: ⌘⇧P from Finder, then Esc, closes the overlay.
 - The timer is opened with **T**, because Tab cycles displays in the overlay.
 
 ## How to run and test
