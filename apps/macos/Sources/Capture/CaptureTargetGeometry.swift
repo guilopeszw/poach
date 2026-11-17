@@ -67,14 +67,14 @@ enum CaptureTargetGeometry {
     }
 
     /// Where the capture pill sits for a selected area, in the same top-left coordinates as `area`.
-    /// The pill is centred on the area and attached to its outline: below it when there is room,
-    /// otherwise above it, otherwise just inside its bottom edge. `overlap` lets the pill's edge
-    /// sit on the outline so the two read as one shape. It never leaves `bounds` (inset by `margin`).
+    /// The pill is centred on the area, `gap` points away from its outline: below it when there is
+    /// room, otherwise above it, otherwise just inside its bottom edge. It never leaves `bounds`
+    /// (inset by `margin`).
     static func attachedPillFrame(for area: CGRect, pillSize: CGSize, in bounds: CGRect,
-                                  overlap: CGFloat = 1, margin: CGFloat = 8) -> CGRect {
+                                  gap: CGFloat = 12, margin: CGFloat = 8) -> CGRect {
         let x = min(max(area.midX - pillSize.width / 2, bounds.minX + margin), bounds.maxX - margin - pillSize.width)
-        let below = area.maxY - overlap
-        let above = area.minY + overlap - pillSize.height
+        let below = area.maxY + gap
+        let above = area.minY - gap - pillSize.height
         let y: CGFloat
         if below + pillSize.height <= bounds.maxY - margin {
             y = below
