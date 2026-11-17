@@ -294,18 +294,22 @@ private struct CaptureSelectionView: View {
                 .accessibilityHint(state.mode == .selectedPortion ? "Drag to select an area. The capture controls appear below it." : "Press Tab to choose the next target")
 
                 if state.mode == .selectedPortion {
-                    // Only once an area is chosen, attached to its outline.
+                    // Only once an area is chosen: a drop falls from its outline and becomes the pill.
                     if let area = dragSelection, canStart, !dragging {
                         let frame = CaptureTargetGeometry.attachedPillFrame(
                             for: area, pillSize: CapturePillLayout.size,
                             in: CGRect(origin: .zero, size: geometry.size))
-                        pill
-                            .overlay { Capsule().strokeBorder(.white, lineWidth: 2).allowsHitTesting(false) }
-                            .position(x: frame.midX, y: frame.midY)
-                            .transition(.opacity)
+                        // The drop leaves the bottom edge, or the top edge when the pill sits above
+                        // or inside the area, so it always falls toward the pill.
+                        let origin = CGPoint(x: min(max(frame.midX, area.minX), area.maxX),
+                                             y: frame.minY >= area.maxY ? area.maxY : area.minY)
+                        CapturePillDropIn(origin: origin, frame: frame) { opacity in
+                            pill(controlsOpacity: opacity)
+                        }
+                        .transition(.opacity)
                     }
                 } else {
-                    pill
+                    pill()
                         .padding(.bottom, CapturePillLayout.bottomInset)
                         .frame(maxWidth: .infinity)
                 }
@@ -329,13 +333,14 @@ private struct CaptureSelectionView: View {
         }
     }
 
-    private var pill: some View {
+    private func pill(controlsOpacity: Double = 1) -> some View {
         CapturePill(
             phase: .selecting(canStart: canStart),
             screenshot: state.screenshot,
             timerExpanded: $state.timerExpanded,
             onPrimary: start,
-            onCancel: state.cancel
+            onCancel: state.cancel,
+            controlsOpacity: controlsOpacity
         )
     }
 
