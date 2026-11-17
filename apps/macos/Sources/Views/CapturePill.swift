@@ -325,7 +325,7 @@ struct CapturePillDropIn<Pill: View>: View {
                     .position(x: frame.midX, y: frame.midY)
                 Capsule()
                     .fill(Color.white.opacity(Double(max(0, 1 - g * 1.4))))
-                    .overlay { Capsule().strokeBorder(.white, lineWidth: 2) }
+                    .overlay { Capsule().strokeBorder(.white, lineWidth: 2).opacity(Double(max(0, 1 - g))) }
                     .frame(width: width, height: height)
                     .position(x: frame.midX, y: frame.midY)
                     .allowsHitTesting(false)
@@ -370,8 +370,10 @@ struct CapturePillDropIn<Pill: View>: View {
     }
 }
 
-/// The pill's glass: a light behind-window blur, a white wash, a rim that is bright on top and
-/// a soft shadow. Inside a regular window (the window chooser), it blurs that window's content.
+/// The pill's glass: a light behind-window blur and a white wash, edged like real glass instead
+/// of with an outline. A specular highlight catches the top edge and fades away (reflection), and
+/// a faint spectral fringe runs around the rim, slightly blurred (diffraction). Inside a regular
+/// window (the window chooser), the blur uses that window's content.
 struct CapturePillGlass: View {
     @Environment(\.capturePillBlending) private var blending
 
@@ -379,15 +381,44 @@ struct CapturePillGlass: View {
         CapturePillBlur(blending: blending)
             .clipShape(Capsule())
             .overlay { Capsule().fill(Color.white.opacity(0.38)) }
-            .overlay {
-                Capsule().strokeBorder(
-                    LinearGradient(colors: [.white.opacity(0.9), .white.opacity(0.25)], startPoint: .top, endPoint: .bottom),
-                    lineWidth: 1
-                )
-            }
-            .overlay { Capsule().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5) }
+            .overlay { CapturePillGlassEdge() }
             .shadow(color: .black.opacity(0.14), radius: 12, x: 0, y: 5)
             .allowsHitTesting(false)
+    }
+}
+
+private struct CapturePillGlassEdge: View {
+    var body: some View {
+        ZStack {
+            // Diffraction: a thin rainbow fringe, strongest at the ends, softened so it reads as light.
+            Capsule()
+                .strokeBorder(
+                    AngularGradient(colors: [
+                        .cyan.opacity(0.55), .blue.opacity(0.35), .purple.opacity(0.45), .pink.opacity(0.4),
+                        .orange.opacity(0.35), .yellow.opacity(0.4), .green.opacity(0.3), .cyan.opacity(0.55)
+                    ], center: .center),
+                    lineWidth: 1.5
+                )
+                .blur(radius: 0.8)
+                .blendMode(.plusLighter)
+            // Reflection: a bright highlight along the top edge that fades out down the sides.
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(stops: [
+                        .init(color: .white.opacity(0.95), location: 0),
+                        .init(color: .white.opacity(0.35), location: 0.35),
+                        .init(color: .white.opacity(0), location: 0.6)
+                    ], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 1
+                )
+            // A soft inner glint below the top edge.
+            Capsule()
+                .inset(by: 2.5)
+                .trim(from: 0.6, to: 0.9)
+                .stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                .blur(radius: 0.6)
+        }
+        .clipShape(Capsule())
     }
 }
 
