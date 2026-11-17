@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import SwiftUI
 
 /// A dragged area on one display. `rect` is screen-local with a top-left origin.
@@ -22,7 +23,9 @@ final class CaptureSelectionWindowController {
     static let shared = CaptureSelectionWindowController()
     private var panels: [NSPanel] = []
     private var continuation: CheckedContinuation<CaptureTarget, Error>?
-    private var spaceObserver: NSObjectProtocol?
+    /// Esc, registered only while the overlay is up. macOS often keeps the previous app
+    /// active (for example after ⌘⇧P), so a view-level shortcut would never see the key.
+    private let escape = PoachHotKey(keyCode: UInt32(kVK_Escape), modifiers: 0, id: 3)
 
     func select(mode: PoachCaptureMode, screenshot: Bool) async throws -> CaptureTarget {
         NSApp.unhide(nil)
@@ -42,22 +45,10 @@ final class CaptureSelectionWindowController {
         )
         state.displayTarget = screens.first { $0.0.frame.contains(NSEvent.mouseLocation) }?.1 ?? screens[0].1
         state.onFinish = { [weak self] result in self?.finish(result) }
-        if mode == .window {
-            // The overlay follows every desk, but the window list only covers the desk that was
-            // active when it was read. Reload it whenever the person switches desks.
-            spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
-                forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
-            ) { [weak state] _ in
-                MainActor.assumeIsolated {
-                    state?.reloadWindows(Self.visibleWindows(), pointer: Self.pointerTopLeft())
-                    // WindowServer can report the new desk's windows a moment late.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        state?.reloadWindows(Self.visibleWindows(), pointer: Self.pointerTopLeft())
-                    }
-                }
-            }
+        _ = escape.register { [weak state] in
+            guard let state else { return }
+            if state.timerExpanded { state.timerExpanded = false } else { state.cancel() }
         }
-
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             for (screen, displayID) in screens {
@@ -112,8 +103,7 @@ final class CaptureSelectionWindowController {
     }
 
     private func finish(_ result: Result<CaptureTarget, Error>) {
-        if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }
-        spaceObserver = nil
+        escape.unregister()
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         switch result {
