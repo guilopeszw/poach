@@ -64,6 +64,8 @@ struct CapturePill: View {
     @Binding var timerExpanded: Bool
     let onPrimary: () -> Void
     let onCancel: () -> Void
+    /// Fades the buttons without the glass, for the drop-in animation.
+    var controlsOpacity: Double = 1
 
     @AppStorage(PoachCaptureTimer.storageKey) private var storedSeconds = PoachCaptureTimer.off.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -102,6 +104,8 @@ struct CapturePill: View {
                     .transition(.opacity)
             }
         }
+        .opacity(controlsOpacity)
+        .allowsHitTesting(controlsOpacity > 0.5)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
         .background { CapturePillGlass() }
         .overlay { progressEdge }
@@ -317,6 +321,51 @@ struct CapturePill: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// The area pill's entrance: a white drop leaves the outline at `origin`, falls to the pill's
+/// centre, grows into the pill (its white becoming the pill's rim while the glass shows through),
+/// then the buttons fade in. With Reduce Motion the pill simply appears.
+struct CapturePillDropIn<Pill: View>: View {
+    /// Where the drop leaves the outline, in the parent's coordinates.
+    let origin: CGPoint
+    /// The pill's final frame, in the parent's coordinates.
+    let frame: CGRect
+    let pill: (Double) -> Pill
+
+    private enum Stage: Int { case resting, fallen, grown, shown }
+    @State private var stage = Stage.resting
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static var dropSize: CGFloat { 16 }
+
+    var body: some View {
+        let grown = stage.rawValue >= Stage.grown.rawValue
+        let width = grown ? frame.width : Self.dropSize
+        let height = grown ? frame.height : Self.dropSize
+        let centre = stage == .resting ? origin : CGPoint(x: frame.midX, y: frame.midY)
+        ZStack {
+            pill(stage == .shown ? 1 : 0)
+                .mask { Capsule().frame(width: width, height: height) }
+            Capsule()
+                .fill(Color.white.opacity(grown ? 0 : 1))
+                .overlay { Capsule().strokeBorder(.white, lineWidth: 2) }
+                .frame(width: width, height: height)
+                .shadow(color: .black.opacity(grown ? 0 : 0.2), radius: 4, x: 0, y: 2)
+                .allowsHitTesting(false)
+        }
+        .frame(width: frame.width, height: frame.height)
+        .position(centre)
+        .task {
+            guard !reduceMotion else { stage = .shown; return }
+            // Let the drop show on the outline for a beat, then fall like a drop of water.
+            try? await Task.sleep(for: .milliseconds(40))
+            withAnimation(.easeIn(duration: 0.22)) { stage = .fallen }
+            try? await Task.sleep(for: .milliseconds(220))
+            withAnimation(.spring(duration: 0.42, bounce: 0.18)) { stage = .grown }
+            try? await Task.sleep(for: .milliseconds(240))
+            withAnimation(.easeOut(duration: 0.2)) { stage = .shown }
+        }
     }
 }
 
