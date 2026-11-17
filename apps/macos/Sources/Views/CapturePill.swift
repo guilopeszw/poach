@@ -253,9 +253,9 @@ struct CapturePill: View {
 }
 
 /// The area pill's entrance, like a drop of liquid leaving the selection outline:
-/// 1. the outline swells at `origin` into a drop held by a neck that stretches and snaps
-///    (a metaball: blurred shapes cut at half opacity);
-/// 2. the free drop falls to the pill's centre;
+/// 1–2. in one continuous, accelerating move, the outline swells at `origin` into a drop held by
+///    a neck that stretches and snaps (a metaball: blurred shapes cut at half opacity), and the
+///    free drop keeps falling to the pill's centre;
 /// 3. it grows into the pill, its white becoming the pill's rim while the glass shows through;
 /// 4. the buttons fade in.
 /// With Reduce Motion the pill simply appears.
@@ -270,13 +270,13 @@ struct CapturePillDropIn<Pill: View>: View {
     @State private var finished = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static var pinch: Double { 0.46 }
-    private static var fall: Double { 0.22 }
-    private static var grow: Double { 0.6 }
-    private static var fade: Double { 0.2 }
+    /// The neck holds the drop for this part of the travel, then snaps.
+    private static var pinch: Double { 0.24 }
+    private static var fall: Double { 0.06 }
+    private static var grow: Double { 0.38 }
+    private static var fade: Double { 0.12 }
     private static var total: Double { pinch + fall + grow + fade }
     private static var dropRadius: CGFloat { 8 }
-    private static var pinchDepth: CGFloat { 20 }
 
     var body: some View {
         if reduceMotion {
@@ -295,19 +295,21 @@ struct CapturePillDropIn<Pill: View>: View {
     @ViewBuilder
     private func content(at t: Double) -> some View {
         let direction: CGFloat = frame.midY >= origin.y ? 1 : -1
-        let pinched = CGPoint(x: origin.x, y: origin.y + direction * Self.pinchDepth)
         let growStart = Self.pinch + Self.fall
+        // One path from the outline to the pill's centre: it starts slowly and only speeds up,
+        // so the drop never stops between leaving the outline and landing.
+        let travel = Self.easeIn(t / growStart)
+        let centre = CGPoint(x: origin.x + (frame.midX - origin.x) * travel,
+                             y: origin.y + (frame.midY - origin.y) * travel)
         ZStack(alignment: .topLeading) {
             if t < Self.pinch {
                 // The outline swells into a drop on a stretching neck.
                 let p = Self.easeInOut(t / Self.pinch)
-                let centre = CGPoint(x: origin.x, y: origin.y + direction * Self.pinchDepth * p)
                 // Wide and flat at first, rounder as it hangs lower.
                 goo(drop: centre, radius: 3 + (Self.dropRadius - 3) * p, stretch: 1.9 - 0.9 * p, direction: direction)
             } else if t < growStart {
-                // The free drop falls, stretching along its path as it speeds up.
-                let f = Self.easeIn((t - Self.pinch) / Self.fall)
-                let centre = CGPoint(x: frame.midX, y: pinched.y + (frame.midY - pinched.y) * f)
+                // The free drop, stretched along its path as it speeds up.
+                let f = CGFloat(min(max((t - Self.pinch) / Self.fall, 0), 1))
                 Ellipse()
                     .fill(Color.white)
                     .frame(width: Self.dropRadius * 2 * (1 - 0.18 * f), height: Self.dropRadius * 2 * (1 + 0.4 * f))
