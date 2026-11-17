@@ -391,7 +391,9 @@ struct CapturePillGlass: View {
     var body: some View {
         Group {
             if #available(macOS 26.0, *) {
+                // Light glass even in Dark Mode or over dark windows, so the dark icons stay legible.
                 Color.clear.glassEffect(.regular, in: Capsule())
+                    .environment(\.colorScheme, .light)
             } else {
                 CapturePillLegacyGlass()
             }
