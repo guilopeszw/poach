@@ -378,9 +378,11 @@ struct CapturePillGlass: View {
     @Environment(\.capturePillBlending) private var blending
 
     var body: some View {
+        // Kept thin so what is behind the pill shows through clearly.
         CapturePillBlur(blending: blending)
+            .opacity(0.7)
             .clipShape(Capsule())
-            .overlay { Capsule().fill(Color.white.opacity(0.38)) }
+            .overlay { Capsule().fill(Color.white.opacity(0.12)) }
             .overlay { CapturePillGlassEdge() }
             .shadow(color: .black.opacity(0.14), radius: 12, x: 0, y: 5)
             .allowsHitTesting(false)
