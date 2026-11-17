@@ -272,7 +272,7 @@ struct CapturePillDropIn<Pill: View>: View {
 
     private static var pinch: Double { 0.46 }
     private static var fall: Double { 0.22 }
-    private static var grow: Double { 0.46 }
+    private static var grow: Double { 0.6 }
     private static var fade: Double { 0.2 }
     private static var total: Double { pinch + fall + grow + fade }
     private static var dropRadius: CGFloat { 8 }
@@ -305,26 +305,31 @@ struct CapturePillDropIn<Pill: View>: View {
                 // Wide and flat at first, rounder as it hangs lower.
                 goo(drop: centre, radius: 3 + (Self.dropRadius - 3) * p, stretch: 1.9 - 0.9 * p, direction: direction)
             } else if t < growStart {
-                // The free drop falls like water.
+                // The free drop falls, stretching along its path as it speeds up.
                 let f = Self.easeIn((t - Self.pinch) / Self.fall)
                 let centre = CGPoint(x: frame.midX, y: pinched.y + (frame.midY - pinched.y) * f)
-                Circle()
+                Ellipse()
                     .fill(Color.white)
-                    .frame(width: Self.dropRadius * 2, height: Self.dropRadius * 2)
+                    .frame(width: Self.dropRadius * 2 * (1 - 0.18 * f), height: Self.dropRadius * 2 * (1 + 0.4 * f))
                     .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
                     .position(centre)
             } else {
-                // It grows into the pill; the buttons fade in at the end.
-                let g = Self.spring(min((t - growStart) / Self.grow, 1))
+                // On landing it squashes, then spreads sideways like liquid while its height
+                // catches up a moment later; both settle with a gentle wobble.
+                let x = (t - growStart) / Self.grow
                 let drop = Self.dropRadius * 2
-                let width = max(drop, drop + (frame.width - drop) * g)
-                let height = max(drop, drop + (frame.height - drop) * g)
-                let controls = min(max((t - growStart - Self.grow * 0.6) / Self.fade, 0), 1)
+                let spread = Self.spring(x, damping: 6.5, frequency: 6.5)
+                let rise = Self.spring((x - 0.12) / 0.88, damping: 7, frequency: 6.5)
+                let squash = drop * (1 - 0.35 * Self.bump(x / 0.18))
+                let width = max(drop * 0.8, drop + (frame.width - drop) * spread)
+                let height = max(4, rise <= 0 ? squash : squash + (frame.height - squash) * rise)
+                let g = min(max(x / 0.6, 0), 1)
+                let controls = min(max((t - growStart - Self.grow * 0.55) / Self.fade, 0), 1)
                 pill(controls)
                     .mask { Capsule().frame(width: width, height: height) }
                     .position(x: frame.midX, y: frame.midY)
                 Capsule()
-                    .fill(Color.white.opacity(Double(max(0, 1 - g * 1.4))))
+                    .fill(Color.white.opacity(Double(max(0, 1 - g * 1.3))))
                     .overlay { Capsule().strokeBorder(.white, lineWidth: 2).opacity(Double(max(0, 1 - g))) }
                     .frame(width: width, height: height)
                     .position(x: frame.midX, y: frame.midY)
@@ -363,10 +368,19 @@ struct CapturePillDropIn<Pill: View>: View {
         return CGFloat(x * x)
     }
 
-    /// A soft spring: about 10% overshoot, settled by the end.
-    private static func spring(_ x: Double) -> CGFloat {
+    /// A damped spring from 0 to 1 over `x` in 0...1: a little overshoot and wobble, settled at 1.
+    private static func spring(_ x: Double, damping: Double, frequency: Double) -> CGFloat {
+        guard x > 0 else { return 0 }
         guard x < 1 else { return 1 }
-        return CGFloat(1 - exp(-5 * x) * cos(7 * x))
+        // Fade the residual so the curve lands exactly on 1 at the end.
+        let residual = exp(-damping * x) * cos(frequency * x) * (1 - x * x * x)
+        return CGFloat(1 - residual)
+    }
+
+    /// Rises to 1 at the middle of 0...1 and falls back to 0: the landing squash.
+    private static func bump(_ x: Double) -> CGFloat {
+        guard x > 0, x < 1 else { return 0 }
+        return CGFloat(sin(x * .pi))
     }
 }
 
