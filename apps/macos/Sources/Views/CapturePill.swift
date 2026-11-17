@@ -522,6 +522,24 @@ extension TimerOptionsCollapse: ViewModifier {
 /// sits on a soft white thumb; while pressed, the thumb lifts into a larger, almost clear lens
 /// that follows the pointer (and overflows the pill), and the option under it becomes the choice
 /// at once. On release the lens settles back into the thumb with a spring.
+/// A mask that keeps either the inside of a capsule-shaped lens or everything outside it.
+private struct LensCutout: View {
+    let lens: CGRect
+    let inside: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            var path = Path(roundedRect: lens, cornerRadius: lens.height / 2, style: .continuous)
+            if inside {
+                context.fill(path, with: .color(.black))
+            } else {
+                path.addRect(CGRect(origin: .zero, size: size))
+                context.fill(path, with: .color(.black), style: FillStyle(eoFill: true))
+            }
+        }
+    }
+}
+
 private struct CaptureTimerLensPicker: View {
     @Binding var selection: PoachCaptureTimer
     let onCommit: () -> Void
@@ -545,22 +563,41 @@ private struct CaptureTimerLensPicker: View {
             let centre = dragX.map { min(max($0, lensWidth / 2), width - lensWidth / 2) }
                 ?? segment * (CGFloat(selection.index) + 0.5)
 
+            let lensHeight = lifted ? Self.liftedHeight : Self.restingHeight
+            let lensFrame = CGRect(x: centre - lensWidth / 2, y: (geometry.size.height - lensHeight) / 2,
+                                   width: lensWidth, height: lensHeight)
+            let anchor = UnitPoint(x: centre / max(width, 1), y: 0.5)
+
             ZStack(alignment: .topLeading) {
                 lens(lifted: lifted)
-                    .frame(width: lensWidth, height: lifted ? Self.liftedHeight : Self.restingHeight)
+                    .frame(width: lensWidth, height: lensHeight)
                     .position(x: centre, y: geometry.size.height / 2)
 
-                HStack(spacing: 0) {
-                    ForEach(PoachCaptureTimer.allCases) { option in
-                        Text(option.shortTitle)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(option == selection ? Color(white: 0.09) : Color(white: 0.45))
-                            .scaleEffect(lifted && option == selection && !reduceMotion ? 1.12 : 1)
-                            .frame(width: segment, height: geometry.size.height)
-                    }
+                if lifted && !reduceMotion {
+                    // Refraction: outside the lens the labels are untouched; inside they are
+                    // magnified, and along the rim they bend harder, as through a drop of glass.
+                    labels(segment: segment, height: geometry.size.height)
+                        .mask { LensCutout(lens: lensFrame, inside: false) }
+                    labels(segment: segment, height: geometry.size.height)
+                        .scaleEffect(1.22, anchor: anchor)
+                        .mask { LensCutout(lens: lensFrame.insetBy(dx: 6, dy: 6), inside: true) }
+                    labels(segment: segment, height: geometry.size.height)
+                        .scaleEffect(1.6, anchor: anchor)
+                        .blur(radius: 0.7)
+                        .mask {
+                            Capsule()
+                                .strokeBorder(lineWidth: 6)
+                                .frame(width: lensFrame.width, height: lensFrame.height)
+                                .position(x: lensFrame.midX, y: lensFrame.midY)
+                        }
+                    lensRim
+                        .frame(width: lensWidth, height: lensHeight)
+                        .position(x: centre, y: geometry.size.height / 2)
+                } else {
+                    labels(segment: segment, height: geometry.size.height)
                 }
-                .allowsHitTesting(false)
             }
+            .allowsHitTesting(false)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
@@ -595,6 +632,28 @@ private struct CaptureTimerLensPicker: View {
             }
         }
         .accessibilityAction { onCommit() }
+    }
+
+    private func labels(segment: CGFloat, height: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            ForEach(PoachCaptureTimer.allCases) { option in
+                Text(option.shortTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(option == selection ? Color(white: 0.09) : Color(white: 0.45))
+                    .frame(width: segment, height: height)
+            }
+        }
+        .frame(height: height)
+    }
+
+    /// The lifted lens's bright rim, drawn over the refracted labels.
+    private var lensRim: some View {
+        Capsule()
+            .strokeBorder(
+                LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.3), .black.opacity(0.1)],
+                               startPoint: .top, endPoint: .bottom),
+                lineWidth: 1.2
+            )
     }
 
     /// Resting: a soft white thumb with a hairline edge. Lifted: an almost clear lens with a
