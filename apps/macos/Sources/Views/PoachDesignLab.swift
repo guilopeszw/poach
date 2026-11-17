@@ -116,12 +116,16 @@ struct PoachDesignLab: View {
         case .pill:
             // A busy backdrop, so the glass's refraction and tint are visible.
             ZStack {
-                LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                // Bright on top, dark (like a terminal) below.
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Color(red: 0.1, green: 0.1, blue: 0.12)
+                }
                 VStack(spacing: 6) {
                     ForEach(0..<7) { row in
                         Text(String(repeating: "Poach glass  ", count: 6))
                             .font(.system(size: 18, weight: .heavy))
-                            .foregroundStyle(row.isMultiple(of: 2) ? .white : .black.opacity(0.7))
+                            .foregroundStyle(row.isMultiple(of: 2) ? .white : .yellow)
                             .fixedSize()
                     }
                 }
