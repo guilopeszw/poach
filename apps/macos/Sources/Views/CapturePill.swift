@@ -173,8 +173,6 @@ struct CapturePill: View {
     private var options: some View {
         CaptureTimerLensPicker(
             selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
-            tint: Self.activeTint,
-            fill: Self.activeFill,
             onCommit: { timerExpanded = false }
         )
         .padding(.horizontal, 8)
@@ -487,14 +485,12 @@ extension TimerOptionsCollapse: ViewModifier {
     }
 }
 
-/// The timer options with a sliding lens, after iOS's glass tab bar: the chosen option sits on a
-/// filled capsule; while pressed, the capsule lifts into a larger white lens that follows the
-/// pointer (and overflows the pill), and the option under it becomes the choice. On release it
-/// settles back onto the option with a spring.
+/// The timer options as a glass segmented control (Poach brief `FDBFE307…`): the chosen option
+/// sits on a soft white thumb; while pressed, the thumb lifts into a larger, almost clear lens
+/// that follows the pointer (and overflows the pill), and the option under it becomes the choice
+/// at once. On release the lens settles back into the thumb with a spring.
 private struct CaptureTimerLensPicker: View {
     @Binding var selection: PoachCaptureTimer
-    let tint: Color
-    let fill: Color
     let onCommit: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -524,9 +520,9 @@ private struct CaptureTimerLensPicker: View {
                 HStack(spacing: 0) {
                     ForEach(PoachCaptureTimer.allCases) { option in
                         Text(option.shortTitle)
-                            .font(.system(size: 13, weight: option == selection ? .bold : .semibold))
-                            .foregroundStyle(option == selection ? tint : Color(white: 0.4))
-                            .scaleEffect(lifted && option == selection && !reduceMotion ? 1.18 : 1)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(option == selection ? Color(white: 0.09) : Color(white: 0.45))
+                            .scaleEffect(lifted && option == selection && !reduceMotion ? 1.12 : 1)
                             .frame(width: segment, height: geometry.size.height)
                     }
                 }
@@ -568,20 +564,25 @@ private struct CaptureTimerLensPicker: View {
         .accessibilityAction { onCommit() }
     }
 
-    /// Resting: a filled capsule. Lifted: a white lens with a bright rim and a soft shadow.
+    /// Resting: a soft white thumb with a hairline edge. Lifted: an almost clear lens with a
+    /// bright rim that fades downward and a soft shadow, so the labels show through it.
     @ViewBuilder private func lens(lifted: Bool) -> some View {
         if lifted {
             Capsule()
-                .fill(Color.white)
+                .fill(Color.white.opacity(0.18))
                 .overlay {
                     Capsule().strokeBorder(
-                        LinearGradient(colors: [.white, .black.opacity(0.14)], startPoint: .top, endPoint: .bottom),
-                        lineWidth: 1.5
+                        LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.35), .black.opacity(0.12)],
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1.2
                     )
                 }
-                .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 5)
+                .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
         } else {
-            Capsule().fill(fill)
+            Capsule()
+                .fill(Color.white.opacity(0.9))
+                .overlay { Capsule().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.06), radius: 1.5, x: 0, y: 0.5)
         }
     }
 }
