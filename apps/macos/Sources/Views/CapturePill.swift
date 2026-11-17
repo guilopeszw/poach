@@ -384,11 +384,27 @@ struct CapturePillDropIn<Pill: View>: View {
     }
 }
 
-/// The pill's glass: a light behind-window blur and a white wash, edged like real glass instead
+/// The pill's glass. On macOS 26 it is the system's Liquid Glass, which refracts and tints
+/// what is behind the pill (the desktop for the pill's own panels, the window content inside
+/// the window chooser). Earlier systems keep `CapturePillLegacyGlass`.
+struct CapturePillGlass: View {
+    var body: some View {
+        Group {
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: Capsule())
+            } else {
+                CapturePillLegacyGlass()
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// macOS 14 and 15: a light behind-window blur and a white wash, edged like real glass instead
 /// of with an outline. A specular highlight catches the top edge and fades away (reflection), and
 /// a faint spectral fringe runs around the rim, slightly blurred (diffraction). Inside a regular
 /// window (the window chooser), the blur uses that window's content.
-struct CapturePillGlass: View {
+private struct CapturePillLegacyGlass: View {
     @Environment(\.capturePillBlending) private var blending
 
     var body: some View {
@@ -399,7 +415,6 @@ struct CapturePillGlass: View {
             .overlay { Capsule().fill(Color.white.opacity(0.12)) }
             .overlay { CapturePillGlassEdge() }
             .shadow(color: .black.opacity(0.14), radius: 12, x: 0, y: 5)
-            .allowsHitTesting(false)
     }
 }
 
@@ -535,7 +550,8 @@ extension TimerOptionsCollapse: ViewModifier {
 /// The timer options as a glass segmented control (Poach brief `FDBFE307…`): the chosen option
 /// sits on a soft white thumb; while pressed, the thumb lifts into a larger, almost clear lens
 /// that follows the pointer (and overflows the pill), and the option under it becomes the choice
-/// at once. On release the lens settles back into the thumb with a spring.
+/// at once. On release the lens settles back into the thumb with a spring. On macOS 26 the
+/// lifted lens is clear Liquid Glass under the labels; earlier systems fake the refraction.
 /// A mask that keeps either the inside of a capsule-shaped lens or everything outside it.
 private struct LensCutout: View {
     let lens: CGRect
@@ -562,6 +578,10 @@ private struct CaptureTimerLensPicker: View {
     /// Pointer x while pressed; `nil` when the lens rests on `selection`.
     @State private var dragX: CGFloat?
 
+    private static var hasLiquidGlass: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
+    }
+
     private static let restingHeight: CGFloat = 32
     private static let liftedHeight: CGFloat = 58
     private static let liftedExtraWidth: CGFloat = 14
@@ -583,12 +603,22 @@ private struct CaptureTimerLensPicker: View {
             let anchor = UnitPoint(x: centre / max(width, 1), y: 0.5)
 
             ZStack(alignment: .topLeading) {
-                lens(lifted: lifted)
-                    .frame(width: lensWidth, height: lensHeight)
-                    .position(x: centre, y: geometry.size.height / 2)
+                if !lifted || !Self.hasLiquidGlass {
+                    lens(lifted: lifted)
+                        .frame(width: lensWidth, height: lensHeight)
+                        .position(x: centre, y: geometry.size.height / 2)
+                }
 
-                if lifted && !reduceMotion {
-                    // Refraction: outside the lens the labels are untouched; inside they are
+                if lifted, #available(macOS 26.0, *) {
+                    // A clear Liquid Glass lens refracts the pill and what is behind it; the labels
+                    // stay crisp on top, as in the system's own glass controls.
+                    Color.clear
+                        .glassEffect(.clear, in: Capsule())
+                        .frame(width: lensWidth, height: lensHeight)
+                        .position(x: centre, y: geometry.size.height / 2)
+                    labels(segment: segment, height: geometry.size.height)
+                } else if lifted && !reduceMotion {
+                    // Refraction (macOS 14 and 15): outside the lens the labels are untouched; inside they are
                     // magnified, and along the rim they bend harder, as through a drop of glass.
                     labels(segment: segment, height: geometry.size.height)
                         .mask { LensCutout(lens: lensFrame, inside: false) }
