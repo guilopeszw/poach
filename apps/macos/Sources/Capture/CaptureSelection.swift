@@ -359,7 +359,8 @@ private struct CaptureSelectionView: View {
                 current = clamped(value.location, to: size)
             }
             .onEnded { _ in
-                guard state.mode != .selectedPortion else { return state.point(at: displayID) }
+                // Displays and windows are picked by pointing; an area shows its pill once the drag ends.
+                guard state.mode == .selectedPortion else { return state.point(at: displayID) }
                 withAnimation(.easeOut(duration: 0.15)) { dragging = false }
             }
     }
