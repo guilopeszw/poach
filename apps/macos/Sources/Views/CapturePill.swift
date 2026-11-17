@@ -541,10 +541,15 @@ extension TimerOptionsCollapse: ViewModifier {
             .offset(x: -progress * (full.width / 2 - origin.x - button.width / 2))
             .opacity(Double(1 - progress))
             .mask(alignment: .topLeading) {
-                Capsule()
-                    .frame(width: full.width + (button.width - full.width) * progress,
-                           height: full.height + (button.height - full.height) * progress)
-                    .offset(x: origin.x * progress, y: origin.y * progress)
+                if progress > 0 {
+                    Capsule()
+                        .frame(width: full.width + (button.width - full.width) * progress,
+                               height: full.height + (button.height - full.height) * progress)
+                        .offset(x: origin.x * progress, y: origin.y * progress)
+                } else {
+                    // Open: no clipping, so the lifted lens can overhang the pill.
+                    Rectangle().padding(-CapturePillLayout.panelMargin)
+                }
             }
     }
 }
@@ -585,8 +590,9 @@ private struct CaptureTimerLensPicker: View {
     }
 
     private static let restingHeight: CGFloat = 32
-    private static let liftedHeight: CGFloat = 58
-    private static let liftedExtraWidth: CGFloat = 14
+    /// The lifted lens is taller than the 48 pt pill so it overlaps the pill's edges.
+    private static let liftedHeight: CGFloat = 64
+    private static let liftedExtraWidth: CGFloat = 22
 
     var body: some View {
         GeometryReader { geometry in
@@ -596,7 +602,8 @@ private struct CaptureTimerLensPicker: View {
             let lifted = dragX != nil
             let lensWidth = segment + (lifted ? Self.liftedExtraWidth : 0)
             // While pressed the lens follows the pointer; at rest it centres on the choice.
-            let centre = dragX.map { min(max($0, lensWidth / 2), width - lensWidth / 2) }
+            // At the ends the lens may overhang the pill, as a lifted glass lens does.
+            let centre = dragX.map { min(max($0, segment / 2), width - segment / 2) }
                 ?? segment * (CGFloat(selection.index) + 0.5)
 
             let lensHeight = lifted ? Self.liftedHeight : Self.restingHeight
@@ -616,6 +623,9 @@ private struct CaptureTimerLensPicker: View {
                     // stay crisp on top, as in the system's own glass controls.
                     Color.clear
                         .glassEffect(.clear, in: Capsule())
+                        .environment(\.colorScheme, .light)
+                        .overlay { lensRim }
+                        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
                         .frame(width: lensWidth, height: lensHeight)
                         .position(x: centre, y: geometry.size.height / 2)
                     labels(segment: segment, height: geometry.size.height)
