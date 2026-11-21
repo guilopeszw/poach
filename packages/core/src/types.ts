@@ -58,8 +58,11 @@ export interface InteractionAnnotation {
 export interface CaptureInfo {
   readonly widthPx: number;
   readonly heightPx: number;
-  /** Stored pixels per macOS point when known; null for imported media. */
+  /** Horizontal stored pixels per macOS point when known; null for imported media. */
   readonly deviceScale: number | null;
+  /** Native capture bounds in macOS points; absent for imports. */
+  readonly widthPoints?: number;
+  readonly heightPoints?: number;
   readonly imageMaxSize: number;
 }
 export interface MomentOptions {
