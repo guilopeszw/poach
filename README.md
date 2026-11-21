@@ -5,6 +5,8 @@
 
 <p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach’s editor showing a blue and orange Night Shift Radio player, its color palette, the Snatch font button, and a handoff to Codex."></a></p>
 
+**New on main:** faster analysis, detail crops, and the Chrome inspector. See [Unreleased](CHANGELOG.md#unreleased); build from source to try these changes before the next packaged release.
+
 ## Poach with taste
 
 Taste is still your job. When a hover makes you stop and try it again, record it. Poach gives your coding agent the timing, motion, and little details that made you stop.
@@ -23,7 +25,9 @@ During native screen recordings, Poach keeps a local, timestamped pointer trace 
 
 **Match a font from a screenshot.** When Poach detects readable text in a screenshot, **Snatch font** appears below Palette. Drag over a line or pick it from **Choose text line**. Compare the screenshot with editable previews from fonts installed on your Mac. Choose a visual match to include its family and face in your handoff.
 
-**Chrome companion preview.** Pair Chrome in the optional second step of onboarding or in Settings. Poach opens Capture when you pair or skip the step. Select a component in Chrome, then take a screenshot or record its interaction in Poach. The extension sends computed typography, browser events, visible state changes, and available animation timing directly to Poach. Poach automatically includes evidence when the Chrome session overlaps a recording. For screenshots, check the displayed site and choose **Include Chrome evidence** if it matches the image. The preview uses the unpacked extension bundled in Poach.app. [Set up the preview and try the dropzone benchmark](CONTRIBUTING.md#chrome-companion-preview).
+**Chrome companion preview.** Pair Chrome in the optional second step of onboarding or in Settings. Poach opens Capture when you pair or skip the step. Hover or focus a component to inspect its CSS size, typography, colors, and animation timing. Click or press Enter to pin it, use ↑ to select its parent, or Escape to cancel. Then take a screenshot or record its interaction in Poach. The extension sends bounded measurements of the component and its visible children, browser events, state changes, and available animation timing directly to Poach. Poach automatically includes evidence when the Chrome session overlaps a recording. For screenshots, check the displayed site and choose **Include Chrome evidence** if it matches the image. The preview uses the unpacked extension bundled in Poach.app. [Set up the preview and try the dropzone benchmark](CONTRIBUTING.md#chrome-companion-preview).
+
+**Ask for a detail.** Your assistant can request a cropped video frame at the stored recording’s resolution. Poach labels returned image sizes and preserves known Mac point dimensions, so reduced previews are distinguishable from the original capture. [How image scale and browser evidence work](docs/assistant-evidence.md).
 
 In **Settings → Storage**, see how much space Poach uses and choose **Clear unused captures** to remove old recordings, screenshots, and extracted frames. Poach keeps the open edit, media and frames referenced by handoffs that are still available, and your imported originals.
 
@@ -62,36 +66,12 @@ Poach analyzes the media on your Mac. During an explicit native screen recording
 
 </details>
 
-[Contributing and local development](CONTRIBUTING.md) · [License](LICENSE)
+[Changelog](CHANGELOG.md) · [Assistant evidence reference](docs/assistant-evidence.md) · [Contributing and local development](CONTRIBUTING.md) · [License](LICENSE)
 
-### Image scale and details
+## Performance and validation
 
-Shared images are captioned with their actual returned dimensions and, when available, stored-source dimensions. `evidence.capture` preserves `widthPx`, `heightPx`, `imageMaxSize` and a nullable `deviceScale`. Native captures additionally record `widthPoints` and `heightPoints`; `deviceScale` is the horizontal ratio of stored pixels to macOS points. Use both dimensions for exact coordinate mapping after encoder rounding. Imports have unknown display scale. Browser CSS pixels are a separate coordinate space.
-
-`poach_read_moment` accepts optional `crop: {x, y, width, height}` in stored-video pixels from the top left and `maxSize` (16–8192, default 1280). Cropping occurs before resizing and never enlarges pixels. The 5 MiB MCP image limit still applies. Native resolution means the stored recording, which may already have been reduced during capture. Old briefs, favorites and `.poach` files remain readable without these optional fields.
-
-Verify a Retina capture, a capture downscaled to 1920 pixels, and an imported file. Check a detail crop and an out-of-bounds crop through MCP, then favorite/export/import/share and verify that dimensions survive.
-
-### Browser measurements at a moment
-
-`poach_read_moment` includes nearby measured browser rectangles, layout/color styles and available animation duration, delay, easing and keyframe offsets. Page viewport and device pixel ratio identify CSS coordinate units. The most recent prior state remains relevant until a later state replaces it. Browser/video alignment is estimated; video-derived timing is approximate, while browser animation timing comes from the page. CSS font stacks remain preferences, not proof of rendered glyph fonts.
-
-When attaching a browser session to a recording, Poach retains observations in the recording interval plus one second of margin and the state active at recording start. Scrolling alone does not consume a state slot. Run `bash scripts/test-browser-evidence.sh` and the MCP package tests to check compatibility, alignment and held states.
-
-### Measured child components
-
-The Chrome companion measures visible descendants at pin time (`components`) and finish (`componentsAtEnd`), preserving relative rectangles, hierarchy, typography, colors and short direct text. Each snapshot keeps at most 40 nodes within six descendant levels; larger trees retain the largest visible areas in document order. Hidden and editable subtrees are excluded. These are two snapshots, not continuous component tracking.
-
-The bridge remains limited to 256 KiB. If necessary it omits only the optional end snapshot; if the remaining evidence is still too large, sending fails with the existing limit message. MCP includes a short component summary and retains the full lists in the brief without repeating them in moment responses. Older extensions and saved files remain compatible.
-
-Run `pnpm test:chrome` (Playwright; system Chrome on macOS, or `CHROME_BIN` pointing to Chrome elsewhere), `bash scripts/test-browser-evidence.sh`, and the MCP package tests. Check hidden/form content, nested trees, more than 40 children, oversized bridge payloads, and favorite/export/import/share preservation. For Playwright-managed Chromium on Linux, run `pnpm exec playwright install chromium` first.
-
-### Live Chrome inspector
-
-While choosing a component, hover or focus an element to preview its CSS dimensions, font stack, colors and available visual/animation properties. Click or press Enter to pin, use ↑ to inspect a parent, and Escape to cancel. The isolated card stays within the viewport and is removed before capture starts. It refreshes only during selection and stops on pin, cancel, navigation or target removal. Color values and the first CSS font family are measurements, not claims about rendered glyph fonts.
+Analysis batches frame decoding locally. On the validated Apple M5 / macOS 26.6.2 setup, five native recordings reached the editor in **1.07 seconds median** (0.95–1.18 seconds), after an excluded warm-up. This measures the app’s stop handler through recording finalization, normalization, analysis, and editor setup; it excludes physical-display latency. [Native validation and measurement details](docs/validation/native-2026-11-21.md).
 
 ![Chrome inspector on a synthetic local page](docs/media/chrome-inspector.png)
 
-[Watch the synthetic selection demo](docs/media/chrome-inspector.gif). Run `node scripts/record-chrome-inspector.mjs` to regenerate both artifacts locally; it uses Playwright, Chrome and FFmpeg.
-
-Check mouse selection, Tab/focus, ↑ parent, Enter, Escape, viewport edges, transparent colors and target removal with `pnpm test:chrome`. Confirm that inspector elements are absent after pinning and from the evidence handed to MCP.
+[Watch the inspector demo](docs/media/chrome-inspector.gif).
