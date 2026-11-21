@@ -1,0 +1,570 @@
+[
+  {
+    "case": "motion",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.1682005000038771,
+          "min": 0.1677100000088103,
+          "max": 0.17427000000316184
+        },
+        "cpu": {
+          "median": 0.17612099999999997,
+          "min": 0.17282799999999998,
+          "max": 0.18216
+        },
+        "parentRSSKiB": {
+          "median": 49104,
+          "min": 48976,
+          "max": 49904
+        },
+        "childRSSKiB": {
+          "median": 22880,
+          "min": 22800,
+          "max": 24560
+        },
+        "ffmpeg": {
+          "median": 4,
+          "min": 4,
+          "max": 4
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.12178900001163129,
+          "min": 0.1192430829978548,
+          "max": 0.12364799999340903
+        },
+        "cpu": {
+          "median": 0.12989599999999998,
+          "min": 0.126155,
+          "max": 0.133739
+        },
+        "parentRSSKiB": {
+          "median": 48992,
+          "min": 48784,
+          "max": 49040
+        },
+        "childRSSKiB": {
+          "median": 8768,
+          "min": 2016,
+          "max": 11408
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "static",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.12110050000774208,
+          "min": 0.1201857919950271,
+          "max": 0.1257776249985909
+        },
+        "cpu": {
+          "median": 0.10936799999999999,
+          "min": 0.10759099999999999,
+          "max": 0.113053
+        },
+        "parentRSSKiB": {
+          "median": 48480,
+          "min": 48400,
+          "max": 48608
+        },
+        "childRSSKiB": {
+          "median": 12112,
+          "min": 5648,
+          "max": 22896
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.12169829099730123,
+          "min": 0.11696166600449942,
+          "max": 0.12465333299769554
+        },
+        "cpu": {
+          "median": 0.109045,
+          "min": 0.10487999999999999,
+          "max": 0.11007199999999999
+        },
+        "parentRSSKiB": {
+          "median": 48464,
+          "min": 48352,
+          "max": 49056
+        },
+        "childRSSKiB": {
+          "median": 8816,
+          "min": 8048,
+          "max": 9120
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "sparse",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.14760879198729526,
+          "min": 0.14138749999983702,
+          "max": 0.1671958750084741
+        },
+        "cpu": {
+          "median": 0.149338,
+          "min": 0.14562999999999998,
+          "max": 0.15217899999999998
+        },
+        "parentRSSKiB": {
+          "median": 48400,
+          "min": 48288,
+          "max": 48480
+        },
+        "childRSSKiB": {
+          "median": 11648,
+          "min": 8480,
+          "max": 18688
+        },
+        "ffmpeg": {
+          "median": 4,
+          "min": 4,
+          "max": 4
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.11955204200057779,
+          "min": 0.11829337499511894,
+          "max": 0.12235616600082722
+        },
+        "cpu": {
+          "median": 0.109188,
+          "min": 0.108848,
+          "max": 0.11084
+        },
+        "parentRSSKiB": {
+          "median": 48160,
+          "min": 48064,
+          "max": 48496
+        },
+        "childRSSKiB": {
+          "median": 18352,
+          "min": 1776,
+          "max": 21760
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "offset",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.16928670900233556,
+          "min": 0.14713795800344087,
+          "max": 0.1766137090016855
+        },
+        "cpu": {
+          "median": 0.158072,
+          "min": 0.155132,
+          "max": 0.166978
+        },
+        "parentRSSKiB": {
+          "median": 48672,
+          "min": 48512,
+          "max": 49760
+        },
+        "childRSSKiB": {
+          "median": 18832,
+          "min": 11776,
+          "max": 24160
+        },
+        "ffmpeg": {
+          "median": 4,
+          "min": 4,
+          "max": 4
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.12433845798659604,
+          "min": 0.11546154200914316,
+          "max": 0.12535500001104083
+        },
+        "cpu": {
+          "median": 0.117754,
+          "min": 0.114103,
+          "max": 0.122032
+        },
+        "parentRSSKiB": {
+          "median": 48352,
+          "min": 48304,
+          "max": 48480
+        },
+        "childRSSKiB": {
+          "median": 8112,
+          "min": 1584,
+          "max": 24848
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "portrait",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.16869562499050517,
+          "min": 0.16797529099858366,
+          "max": 0.17695074999937788
+        },
+        "cpu": {
+          "median": 0.158025,
+          "min": 0.155508,
+          "max": 0.167203
+        },
+        "parentRSSKiB": {
+          "median": 49616,
+          "min": 49584,
+          "max": 50688
+        },
+        "childRSSKiB": {
+          "median": 11424,
+          "min": 9888,
+          "max": 25872
+        },
+        "ffmpeg": {
+          "median": 4,
+          "min": 4,
+          "max": 4
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.1213396660023136,
+          "min": 0.11975929199252278,
+          "max": 0.14310012500209268
+        },
+        "cpu": {
+          "median": 0.11586099999999999,
+          "min": 0.114066,
+          "max": 0.144916
+        },
+        "parentRSSKiB": {
+          "median": 49488,
+          "min": 49216,
+          "max": 49568
+        },
+        "childRSSKiB": {
+          "median": 23744,
+          "min": 1584,
+          "max": 26400
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "short",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.13169866701355204,
+          "min": 0.11969566698826384,
+          "max": 0.20224654200137593
+        },
+        "cpu": {
+          "median": 0.114447,
+          "min": 0.10400599999999999,
+          "max": 0.136763
+        },
+        "parentRSSKiB": {
+          "median": 47808,
+          "min": 45232,
+          "max": 48432
+        },
+        "childRSSKiB": {
+          "median": 9744,
+          "min": 1536,
+          "max": 16208
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.12358849999145605,
+          "min": 0.12044991699804086,
+          "max": 0.12670108299062122
+        },
+        "cpu": {
+          "median": 0.10537099999999999,
+          "min": 0.105188,
+          "max": 0.113926
+        },
+        "parentRSSKiB": {
+          "median": 47760,
+          "min": 43696,
+          "max": 48368
+        },
+        "childRSSKiB": {
+          "median": 9312,
+          "min": 1776,
+          "max": 21328
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "hd",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.9539725829963572,
+          "min": 0.8398618329956662,
+          "max": 1.004413000002387
+        },
+        "cpu": {
+          "median": 4.947363999999999,
+          "min": 4.745136,
+          "max": 5.052467
+        },
+        "parentRSSKiB": {
+          "median": 73696,
+          "min": 71440,
+          "max": 76416
+        },
+        "childRSSKiB": {
+          "median": 116560,
+          "min": 113072,
+          "max": 122864
+        },
+        "ffmpeg": {
+          "median": 4,
+          "min": 4,
+          "max": 4
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 1.0606598339945776,
+          "min": 0.9722662499989383,
+          "max": 1.203768500010483
+        },
+        "cpu": {
+          "median": 6.5965229999999995,
+          "min": 6.44147,
+          "max": 6.708264
+        },
+        "parentRSSKiB": {
+          "median": 71168,
+          "min": 70944,
+          "max": 77616
+        },
+        "childRSSKiB": {
+          "median": 130224,
+          "min": 124688,
+          "max": 130816
+        },
+        "ffmpeg": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        },
+        "ffprobe": {
+          "median": 2,
+          "min": 2,
+          "max": 2
+        }
+      }
+    }
+  },
+  {
+    "case": "overrun",
+    "parity": true,
+    "runs": 5,
+    "measurements": {
+      "baseline": {
+        "wall": {
+          "median": 0.33343362499726936,
+          "min": 0.2874080000037793,
+          "max": 0.4422586250002496
+        },
+        "cpu": {
+          "median": 0.471529,
+          "min": 0.42378899999999997,
+          "max": 0.578074
+        },
+        "parentRSSKiB": {
+          "median": 71424,
+          "min": 71088,
+          "max": 72368
+        },
+        "childRSSKiB": {
+          "median": 24640,
+          "min": 24560,
+          "max": 24656
+        },
+        "ffmpeg": {
+          "median": 5,
+          "min": 5,
+          "max": 5
+        },
+        "ffprobe": {
+          "median": 3,
+          "min": 3,
+          "max": 3
+        }
+      },
+      "candidate": {
+        "wall": {
+          "median": 0.27683654200518504,
+          "min": 0.24521808300050907,
+          "max": 0.30676141699950676
+        },
+        "cpu": {
+          "median": 0.45586699999999997,
+          "min": 0.42823100000000003,
+          "max": 0.555461
+        },
+        "parentRSSKiB": {
+          "median": 71520,
+          "min": 71008,
+          "max": 72416
+        },
+        "childRSSKiB": {
+          "median": 24656,
+          "min": 24656,
+          "max": 24672
+        },
+        "ffmpeg": {
+          "median": 3,
+          "min": 3,
+          "max": 3
+        },
+        "ffprobe": {
+          "median": 3,
+          "min": 3,
+          "max": 3
+        }
+      }
+    }
+  }
+]
