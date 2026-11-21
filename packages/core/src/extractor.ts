@@ -149,9 +149,7 @@ function seekForMoment(times: readonly number[], seconds: number): number {
   return low < 2 ? 0 : Math.max(0, (times[low - 1]! + times[low - 2]!) / 2);
 }
 
-// Decode only the distinct presentation frames selected by the existing seek rule.
-// PAM carries dimensions with each RGB frame, including rotated and odd-sized media.
-async function readFrames(videoPath: string, seeks: readonly number[], times: readonly number[], width: number, streamIndex: number): Promise<FrameSample[]> {
+function selectFrames(seeks: readonly number[], times: readonly number[]) {
   const targets = [...new Set(seeks.map(seek => {
     const target = times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005);
     if (target === undefined) throw new Error(`Could not decode frame at ${Math.round(seek * 1000)} ms`);
@@ -159,6 +157,13 @@ async function readFrames(videoPath: string, seeks: readonly number[], times: re
   }))].sort((a, b) => a - b);
   const balanced = (terms: string[]): string => terms.length === 1 ? terms[0]! : `(${balanced(terms.slice(0, Math.floor(terms.length / 2)))}+${balanced(terms.slice(Math.floor(terms.length / 2)))})`;
   const select = balanced(targets.map(time => `between(t,${(time - 0.0000005).toFixed(7)},${(time + 0.0000005).toFixed(7)})`));
+  return { targets, select };
+}
+
+// Decode only the distinct presentation frames selected by the existing seek rule.
+// PAM carries dimensions with each RGB frame, including rotated and odd-sized media.
+async function readFrames(videoPath: string, seeks: readonly number[], times: readonly number[], width: number, streamIndex: number): Promise<FrameSample[]> {
+  const { targets, select } = selectFrames(seeks, times);
   const decoded = await decodeSamples(videoPath, select, width, targets.length, streamIndex);
   return seeks.map(seek => decoded[targets.indexOf(times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005)!)]!);
 }
@@ -223,6 +228,38 @@ async function referencePNG(sourcePath: string, timeMs: number, seek = timeMs / 
   return png;
 }
 
+/** PNG streams are concatenated images, not separated by pipe chunk boundaries. */
+function splitPNGs(bytes: Buffer, count: number): Buffer[] {
+  const images: Buffer[] = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    const start = offset;
+    if (!bytes.subarray(offset, offset + 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error("Invalid PNG stream");
+    offset += 8;
+    for (;;) {
+      if (offset + 12 > bytes.length) throw new Error("Truncated PNG stream");
+      const length = bytes.readUInt32BE(offset);
+      const end = bytes.toString("ascii", offset + 4, offset + 8) === "IEND";
+      if (offset + length + 12 > bytes.length) throw new Error("Truncated PNG chunk");
+      offset += length + 12;
+      if (end) break;
+    }
+    images.push(bytes.subarray(start, offset));
+  }
+  if (images.length !== count) throw new Error("Missing reference frames");
+  return images;
+}
+
+async function referencePNGs(sourcePath: string, seeks: readonly number[], times: readonly number[], maxSize = 1280, streamIndex = 0): Promise<Buffer[]> {
+  if (!seeks.length) return [];
+  const { targets, select } = selectFrames(seeks, times);
+  const bytes = await run("ffmpeg", ["-v", "error", "-copyts", "-start_at_zero", "-i", sourcePath, "-map", `0:${streamIndex}`,
+    "-vf", `select='${select}',scale=w='min(${maxSize},iw)':h='min(${maxSize},ih)':force_original_aspect_ratio=decrease`,
+    "-fps_mode", "passthrough", "-frames:v", String(targets.length), "-f", "image2pipe", "-vcodec", "png", "pipe:1"]);
+  const decoded = splitPNGs(bytes, targets.length);
+  return seeks.map(seek => decoded[targets.indexOf(times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005)!)]!);
+}
+
 async function probeMomentSource(videoFile: string) {
   const sourcePath = resolve(videoFile);
   if (![".mp4", ".mov"].includes(extname(sourcePath).toLowerCase())) throw new Error("Expected an MP4 or MOV recording");
@@ -237,7 +274,9 @@ export async function readVideoMoment(videoFile: string, timeMs: number): Promis
   if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("Timestamp must be a nonnegative number of milliseconds");
   const { sourcePath, durationMs } = await probeMomentSource(videoFile);
   if (timeMs >= durationMs) throw new Error("Timestamp must be before the end of the recording");
-  return referencePNG(sourcePath, timeMs, seekForMoment((await presentationTimes(sourcePath)).seekTimes, timeMs / 1000));
+  const timeline = await presentationTimes(sourcePath);
+  const times = timeline.seekTimes;
+  return (await referencePNGs(sourcePath, [seekForMoment(times, timeMs / 1000)], timeline.decodeTimes, 1280, timeline.streamIndex))[0]!;
 }
 
 /** Read a short sequence around a release, ending before the next recorded drag. */
@@ -251,9 +290,9 @@ export async function readDragReleaseFrames(videoFile: string, releaseTimeMs: nu
   const offsets = [-80, 150, 800, 2_000, 4_000];
   const sampleTimes = new Set(offsets.map((offset) => Math.max(0, Math.min(releaseTimeMs + offset, endTimeMs))));
   sampleTimes.add(endTimeMs);
-  for (const timeMs of sampleTimes) {
-    frames.push({ timeMs, png: await referencePNG(sourcePath, timeMs, seekForMoment(times, timeMs / 1000), 768) });
-  }
+  const stamps = [...sampleTimes];
+  const pngs = await referencePNGs(sourcePath, stamps.map(time => seekForMoment(times, time / 1000)), timeline.decodeTimes, 768, timeline.streamIndex);
+  stamps.forEach((timeMs, index) => frames.push({ timeMs, png: pngs[index]! }));
   return { endTimeMs, frames };
 }
 
@@ -321,10 +360,11 @@ export async function inspectVideo(videoFile: string, options: ExtractOptions = 
   await mkdir(outputDirectory, { recursive: true });
   const safeBase = basename(sourcePath, extension).replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 48) || "capture";
   const keyframes: Keyframe[] = [];
-  for (const { kind, index } of keys) {
+  const pngs = await referencePNGs(sourcePath, keys.map(({ index }) => seekForMoment(times, frames[index]!.timeMs / 1000)), timeline.decodeTimes, 1280, timeline.streamIndex);
+  for (const [position, { kind, index }] of keys.entries()) {
     const frame = frames[index]!;
     const imagePath = join(outputDirectory, `${safeBase}-${kind}-${frame.timeMs}ms.png`);
-    await writeFile(imagePath, await referencePNG(sourcePath, frame.timeMs, seekForMoment(times, frame.timeMs / 1000)));
+    await writeFile(imagePath, pngs[position]!);
     keyframes.push({ kind, timeMs: frame.timeMs, imagePath, motion: index === 0 ? 0 : deltas[index - 1] ?? 0 });
   }
   const motionStartMs = frames[keys[0]?.index ?? 0]?.timeMs ?? 0;
