@@ -38,6 +38,7 @@ cp "$repo_root/packages/core/dist/"*.js "$engine_path/dist/"
 cp "$repo_root/packages/core/package.json" "$engine_path/package.json"
 cp "$repo_root/apps/macos/.build/release/Poach" "$app_path/Contents/MacOS/Poach"
 cp "$repo_root/apps/macos/Info.plist" "$app_path/Contents/Info.plist"
+if [[ -f "$repo_root/NOTICE" ]]; then cp "$repo_root/NOTICE" "$app_path/Contents/Resources/NOTICE"; fi
 cp "$repo_root/outputs/connectors/marketplace/plugins/poach/server.mjs" "$app_path/Contents/Resources/server.mjs"
 chrome_path="$app_path/Contents/Resources/ChromeExtension"
 mkdir -p "$chrome_path"
