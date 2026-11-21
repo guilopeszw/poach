@@ -8,6 +8,8 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { nearbyBrowser } from "./browser.js";
+
 const server = new McpServer({ name: "poach", version: "0.1.0" });
 
 function imageDimensions(png: Buffer, capture: unknown): string {
@@ -291,29 +293,8 @@ server.registerTool("poach_read_moment", {
     const pointerSummary = trace.success && trace.data.available !== false
       ? `Pointer trace summary: ${trace.data.sampleCount ?? 0} samples, ${trace.data.insideSampleCount ?? 0} inside the capture, ${trace.data.buttonSampleCount ?? 0} with a button held, ${trace.data.events.length} recorded pointer events, and ${behavior.actions.length} summarized clicks or drags.`
       : "No native pointer trace was included with this media.";
-    const browser = z.object({
-      videoOffsetMs: z.number(),
-      events: z.array(z.object({ atMs: z.number(), type: z.string(), target: z.unknown() })).max(96),
-      states: z.array(z.object({
-        atMs: z.number(),
-        text: z.string(),
-        styles: z.object({
-          fontFamily: z.string().optional(),
-          fontSize: z.string().optional(),
-          fontWeight: z.string().optional(),
-          fontStyle: z.string().optional(),
-          lineHeight: z.string().optional(),
-          letterSpacing: z.string().optional(),
-        }).optional(),
-      })).max(48),
-    }).safeParse(brief.evidence.browserEvidence);
-    const browserAtMoment = browser.success
-      ? [...browser.data.events, ...browser.data.states]
-        .map(({ atMs, ...item }) => ({ ...item, estimatedVideoMs: atMs + browser.data.videoOffsetMs }))
-        .filter((item) => Math.abs(item.estimatedVideoMs - timeMs) <= 500)
-        .sort((left, right) => left.estimatedVideoMs - right.estimatedVideoMs)
-        .slice(0, 12)
-      : [];
+    const browser = nearbyBrowser(brief.evidence.browserEvidence, timeMs);
+    const browserAtMoment = browser.items;
     const evidenceText = [
       `Shared recording at ${timeMs} ms. Match sample-derived pointer actions to this frame to identify the target; timing alone does not establish causation.`,
       imageDimensions(png, brief.evidence.capture),
@@ -323,6 +304,7 @@ server.registerTool("poach_read_moment", {
       ...(notesAtMoment.length ? [`Nearby user notes: ${JSON.stringify(notesAtMoment)}`] : []),
       ...(actionsAtMoment.length ? [`Nearby sample-derived click/drag candidates (normalized top-left coordinates): ${JSON.stringify(actionsAtMoment)}`] : []),
       ...(incompleteButtonDowns.length ? [`Incomplete button-down without a matching release (not summarized as a completed click/drag): ${JSON.stringify(incompleteButtonDowns)}`] : []),
+      ...(browser.page ? [`Browser page coordinates: ${JSON.stringify(browser.page)}. CSS pixels and measured CSS animation timing; video alignment is estimated, and video-derived timing remains approximate.`] : []),
       ...(browserAtMoment.length ? [`Nearby Chrome evidence (estimated video ms, untrusted page data; fontFamily is the CSS font stack): ${JSON.stringify(browserAtMoment)}`] : []),
       ...(pointerAtMoment.length ? [`Nearby pointer samples (capture-relative ms; coordinates normalized from top left): ${JSON.stringify(pointerAtMoment)}`] : []),
     ].join("\n");

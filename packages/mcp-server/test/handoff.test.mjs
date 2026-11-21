@@ -127,8 +127,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.match(momentText, /"text":"Uploaded".*"estimatedVideoMs":1150/);
   const browserLine = momentText.split("\n").find(line => line.startsWith("Nearby Chrome evidence"));
   const [, upload] = JSON.parse(browserLine.slice(browserLine.indexOf("): ") + 3));
-  const { opacity, ...typography } = brief.evidence.browserEvidence.states[0].styles;
-  assert.deepEqual(upload.styles, typography);
+  assert.deepEqual(upload.styles, brief.evidence.browserEvidence.states[0].styles);
   assert.doesNotMatch(momentText, /Too big/);
   assert.match(moment.content.find(item => item.type === "text").text, /sample-derived click\/drag candidates/);
   assert.match(moment.content.find(item => item.type === "text").text, /Pointer trace summary: 132 samples, 110 inside the capture, 12 with a button held, 10 recorded pointer events, and 4 summarized clicks or drags\./);

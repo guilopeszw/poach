@@ -70,7 +70,9 @@
         value: element instanceof HTMLProgressElement ? String(element.value) : limit(element.getAttribute("aria-valuenow")),
       }));
     const state = { rect: rect(root), styles: styles(root), text: visibleText(root), indicators };
-    const key = JSON.stringify(state);
+    // Scrolling changes viewport coordinates, not the component itself.
+    const onPage = ([x, y, width, height]) => [x + scrollX, y + scrollY, width, height];
+    const key = JSON.stringify({ ...state, rect: onPage(state.rect), indicators: indicators.map(item => ({ ...item, rect: onPage(item.rect) })) });
     if (key !== recording.lastState) {
       recording.lastState = key;
       if (states.length >= 48) states.splice(1, 1);
@@ -132,6 +134,7 @@
     const { root, target, startedAtEpochMs, events, states, animations } = recording;
     return {
       version: 1, origin: location.origin, target, startedAtEpochMs,
+      devicePixelRatio, viewport: { width: innerWidth, height: innerHeight },
       durationMs: relativeTime(), events, states, animations, targetRemoved: !root.isConnected,
     };
   }

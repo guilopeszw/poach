@@ -43,14 +43,18 @@ struct PoachBrowserEvidence: Codable {
         let keyframes: [Frame]
     }
 
+    struct Viewport: Codable { let width: Double; let height: Double }
+    var devicePixelRatio: Double?
+    var viewport: Viewport?
+
     let version: Int
     let origin: String
     let target: Element
     let startedAtEpochMs: Int
     let durationMs: Int
-    let events: [Event]
-    let states: [State]
-    let animations: [Animation]
+    var events: [Event]
+    var states: [State]
+    var animations: [Animation]
     let targetRemoved: Bool
     // Add this offset to Chrome's atMs values to estimate positions in the video.
     var videoOffsetMs: Int?
@@ -75,6 +79,8 @@ struct PoachBrowserEvidence: Codable {
               capture.events.allSatisfy({ $0.point == nil || $0.point?.count == 2 }),
               (capture.events.map(\.atMs) + capture.states.map(\.atMs) + capture.animations.map(\.atMs))
                 .allSatisfy({ (0...capture.durationMs).contains($0) }) else { throw ImportError.invalidFile }
+        if let ratio = capture.devicePixelRatio, !ratio.isFinite || ratio <= 0 || ratio > 16 { throw ImportError.invalidFile }
+        if let viewport = capture.viewport, !viewport.width.isFinite || !viewport.height.isFinite || viewport.width <= 0 || viewport.height <= 0 { throw ImportError.invalidFile }
         capture.videoOffsetMs = nil
         return capture
     }
@@ -83,6 +89,12 @@ struct PoachBrowserEvidence: Codable {
         guard recording.overlaps(startedAtEpochMs...(startedAtEpochMs + durationMs)) else { return nil }
         var capture = self
         capture.videoOffsetMs = startedAtEpochMs - recording.lowerBound
+        let start = recording.lowerBound - startedAtEpochMs
+        let end = recording.upperBound - startedAtEpochMs
+        capture.events = events.filter { (start - 1_000...end + 1_000).contains($0.atMs) }
+        capture.animations = animations.filter { (start - 1_000...end + 1_000).contains($0.atMs) }
+        let baseline = states.filter { $0.atMs <= start }.max { $0.atMs < $1.atMs }
+        capture.states = states.filter { (start - 1_000...end + 1_000).contains($0.atMs) || $0.atMs == baseline?.atMs }
         return capture
     }
 
