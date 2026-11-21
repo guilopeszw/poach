@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -53,4 +53,24 @@ test("a stationary capture reports no estimated easing", async (t) => {
   assert.deepEqual(result.keyframes.map(frame => frame.kind), ["start"]);
   assert.equal(result.timing.durationMs, 0);
   assert.equal(result.timing.bezier, null);
+});
+
+// Exercise the streaming boundary with a fake decoder; ffprobe still reads a real clip.
+test("batched samples reject truncated output and decoder failures", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "poach-stream-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, "source.mov");
+  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=black:size=96x64:rate=12", "-t", "1", "-c:v", "libx264", source]);
+  const previous = process.env.PATH;
+  try {
+    const decoder = join(directory, "ffmpeg");
+    await writeFile(decoder, "#!/bin/sh\nprintf 'P7\\nWIDTH 96\\nHEIGHT 64\\nDEPTH 3\\nMAXVAL 255\\nTUPLTYPE RGB\\nENDHDR\\n'\n");
+    await chmod(decoder, 0o700);
+    process.env.PATH = directory + ":" + previous;
+    await assert.rejects(inspectVideo(source), /Truncated/);
+    await writeFile(decoder, "#!/bin/sh\necho decoder-failed >&2\nexit 7\n");
+    await assert.rejects(inspectVideo(source), /code 7: decoder-failed/);
+    await writeFile(decoder, "#!/bin/sh\nprintf 'P7\\nWIDTH 999999\\nHEIGHT 64\\nDEPTH 3\\nMAXVAL 255\\nENDHDR\\n'\n");
+    await assert.rejects(inspectVideo(source), /Invalid PAM/);
+  } finally { process.env.PATH = previous; }
 });

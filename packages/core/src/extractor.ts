@@ -92,14 +92,68 @@ function seekForMoment(times: readonly number[], seconds: number): number {
   return low < 2 ? 0 : Math.max(0, (times[low - 1]! + times[low - 2]!) / 2);
 }
 
-async function readFrame(videoPath: string, seek: number, width: number): Promise<FrameSample> {
-  const frame = await run("ffmpeg", [
-    "-v", "error", ...(seek > 0 ? ["-ss", seek.toFixed(6)] : []), "-i", videoPath, "-frames:v", "1",
-    "-vf", `scale=${width}:-2:flags=area`, "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
-  ]);
-  const height = frame.length / (width * 3);
-  if (!Number.isInteger(height) || height < 1) throw new Error(`Could not decode frame at ${Math.round(seek * 1000)} ms`);
-  return { timeMs: Math.round(seek * 1000), pixels: frame, width, height, channels: 3 };
+// Decode only the distinct presentation frames selected by the existing seek rule.
+// PAM carries dimensions with each RGB frame, including rotated and odd-sized media.
+async function readFrames(videoPath: string, seeks: readonly number[], times: readonly number[], width: number): Promise<FrameSample[]> {
+  const targets = [...new Set(seeks.map(seek => {
+    const target = times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005);
+    if (target === undefined) throw new Error(`Could not decode frame at ${Math.round(seek * 1000)} ms`);
+    return target;
+  }))].sort((a, b) => a - b);
+  const balanced = (terms: string[]): string => terms.length === 1 ? terms[0]! : `(${balanced(terms.slice(0, Math.floor(terms.length / 2)))}+${balanced(terms.slice(Math.floor(terms.length / 2)))})`;
+  const select = balanced(targets.map(time => `between(t,${(time - 0.0000005).toFixed(7)},${(time + 0.0000005).toFixed(7)})`));
+  const decoded = await decodeSamples(videoPath, select, width, targets.length);
+  return seeks.map(seek => decoded[targets.indexOf(times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005)!)]!);
+}
+
+async function decodeSamples(videoPath: string, select: string, width: number, count: number): Promise<FrameSample[]> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn("ffmpeg", ["-v", "error", "-copyts", "-start_at_zero", "-i", videoPath,
+      "-vf", `select='${select}',scale=${width}:-2:flags=area`, "-fps_mode", "passthrough",
+      "-frames:v", String(count), "-f", "image2pipe", "-vcodec", "pam", "-pix_fmt", "rgb24", "pipe:1"],
+      { stdio: ["ignore", "pipe", "pipe"] });
+    const frames: FrameSample[] = [];
+    let pending = Buffer.alloc(0);
+    let total = 0;
+    let stderr = "";
+    let failure: Error | undefined;
+    const fail = (error: Error) => { failure ??= error; child.kill("SIGKILL"); };
+    child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-2000); });
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (failure) return;
+      total += chunk.length;
+      if (total > 64 * 1024 * 1024) return fail(new Error("ffmpeg samples exceeded the 64 MiB safety limit"));
+      pending = Buffer.concat([pending, chunk]);
+      try {
+        while (pending.length) {
+          const end = pending.indexOf("ENDHDR\n");
+          if (end < 0) {
+            if (pending.length > 1024) throw new Error("Invalid PAM frame header");
+            break;
+          }
+          const header = pending.subarray(0, end + 7).toString("ascii");
+          const w = Number(/^WIDTH (\d+)$/m.exec(header)?.[1]);
+          const h = Number(/^HEIGHT (\d+)$/m.exec(header)?.[1]);
+          if (!header.startsWith("P7\n") || !/^DEPTH 3$/m.test(header) || !/^MAXVAL 255$/m.test(header)
+              || w !== width || !Number.isSafeInteger(h) || h < 1 || w * h * 3 > 64 * 1024 * 1024) {
+            throw new Error("Invalid PAM sample dimensions");
+          }
+          const length = w * h * 3;
+          if (pending.length < end + 7 + length) break;
+          frames.push({ timeMs: 0, width: w, height: h, channels: 3, pixels: Buffer.from(pending.subarray(end + 7, end + 7 + length)) });
+          pending = pending.subarray(end + 7 + length);
+          if (frames.length > count) throw new Error("Too many decoded samples");
+        }
+      } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
+    });
+    child.on("error", error => { failure ??= new Error(`Could not start ffmpeg: ${error.message}`); });
+    child.on("close", code => {
+      if (failure) reject(failure);
+      else if (code !== 0) reject(new Error(`ffmpeg exited with code ${code}: ${stderr}`));
+      else if (pending.length || frames.length !== count) reject(new Error("Truncated ffmpeg sample output"));
+      else resolvePromise(frames);
+    });
+  });
 }
 
 async function referencePNG(sourcePath: string, timeMs: number, seek = timeMs / 1000, maxSize = 1280): Promise<Buffer> {
@@ -194,16 +248,13 @@ export async function inspectVideo(videoFile: string, options: ExtractOptions = 
   const sampleCount = Math.max(2, Math.min(720, Math.ceil(durationSeconds * sampleRate)));
   options.onProgress?.("motion");
   const times = await presentationTimes(sourcePath);
-  let previousSeek: number | undefined;
-  const frames: FrameSample[] = [];
-  for (let index = 0; index < sampleCount; index += 1) {
+  const sampleTimes = Array.from({ length: sampleCount }, (_, index) => {
     const time = Math.min(durationSeconds - 0.001, (index / (sampleCount - 1)) * durationSeconds);
-    const timeMs = Math.round(Math.max(0, time) * 1000);
-    const seek = seekForMoment(times, timeMs / 1000);
-    const frame = seek === previousSeek ? frames[frames.length - 1]! : await readFrame(sourcePath, seek, sampleWidth);
-    frames.push({ ...frame, timeMs });
-    previousSeek = seek;
-  }
+    return Math.round(Math.max(0, time) * 1000);
+  });
+  const seeks = sampleTimes.map(time => seekForMoment(times, time / 1000));
+  const decoded = await readFrames(sourcePath, seeks, times, sampleWidth);
+  const frames = decoded.map((frame, index) => ({ ...frame, timeMs: sampleTimes[index]! }));
   const deltas = frames.slice(1).map((frame, index) => pixelDifference(frames[index]!, frame));
   const keys = chooseKeyframes(frames, deltas);
   options.onProgress?.("frames");
