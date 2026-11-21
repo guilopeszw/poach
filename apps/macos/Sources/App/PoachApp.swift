@@ -240,7 +240,8 @@ struct PoachApp: App {
                     hudWindow.preparation.advance(to: stage)
                 }
                 if screenshot.sizePoints.width > 0, screenshot.sizePoints.height > 0 {
-                    result.capture?.deviceScale = Double(result.capture?.widthPx ?? 0) / screenshot.sizePoints.width
+                    let storedWidth = result.capture?.widthPx ?? 0
+                    result.capture?.deviceScale = Double(storedWidth) / screenshot.sizePoints.width
                     result.capture?.widthPoints = screenshot.sizePoints.width
                     result.capture?.heightPoints = screenshot.sizePoints.height
                 }
@@ -350,7 +351,8 @@ struct PoachApp: App {
             }
             result.pointerTrace = recording.pointerTrace
             if recording.sizePoints.width > 0, recording.sizePoints.height > 0 {
-                result.capture?.deviceScale = Double(result.capture?.widthPx ?? 0) / recording.sizePoints.width
+                let storedWidth = result.capture?.widthPx ?? 0
+                result.capture?.deviceScale = Double(storedWidth) / recording.sizePoints.width
                 result.capture?.widthPoints = recording.sizePoints.width
                 result.capture?.heightPoints = recording.sizePoints.height
             }
