@@ -16,6 +16,7 @@ struct PoachBrowserEvidence: Codable {
     }
 
     struct State: Codable {
+        let pageRect: [Double]?
         let atMs: Int
         let rect: [Double]
         let styles: [String: String]
@@ -75,7 +76,7 @@ struct PoachBrowserEvidence: Codable {
               origin.path.isEmpty, origin.query == nil, origin.fragment == nil,
               capture.events.count <= 96, (1...48).contains(capture.states.count),
               capture.animations.count <= 16, capture.animations.allSatisfy({ $0.keyframes.count <= 8 }),
-              capture.states.allSatisfy({ $0.rect.count == 4 && ($0.indicators?.count ?? 0) <= 4 }),
+              capture.states.allSatisfy({ $0.rect.count == 4 && ($0.indicators?.count ?? 0) <= 4 && ($0.pageRect == nil || ($0.pageRect?.count == 4 && $0.pageRect!.allSatisfy(\.isFinite))) }),
               capture.events.allSatisfy({ $0.point == nil || $0.point?.count == 2 }),
               (capture.events.map(\.atMs) + capture.states.map(\.atMs) + capture.animations.map(\.atMs))
                 .allSatisfy({ (0...capture.durationMs).contains($0) }) else { throw ImportError.invalidFile }

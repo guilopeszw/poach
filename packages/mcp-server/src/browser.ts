@@ -10,7 +10,7 @@ export const browserSchema = z.object({
   devicePixelRatio: z.number().positive().max(16).optional(),
   viewport: z.object({ width: z.number().positive(), height: z.number().positive() }).optional(),
   events: z.array(z.object({ atMs: timestamp, type: z.string().max(40), target, point: z.array(z.number().finite()).length(2).optional() })).max(96).default([]),
-  states: z.array(z.object({ atMs: timestamp, text: z.string().max(480), rect: rect.optional(), styles: styles.optional() })).max(48).default([]),
+  states: z.array(z.object({ atMs: timestamp, text: z.string().max(480), rect: rect.optional(), pageRect: rect.optional(), styles: styles.optional() })).max(48).default([]),
   animations: z.array(z.object({ atMs: timestamp, target, durationMs: z.number().finite(), delayMs: z.number().finite(), easing: z.string().max(120), keyframes: z.array(z.object({ offset: z.number().finite(), easing: z.string().max(120), styles })).max(8) })).max(16).default([]),
 });
 
@@ -21,8 +21,8 @@ export function nearbyBrowser(value: unknown, timeMs: number) {
   const browser = parsed.data;
   const offset = browser.videoOffsetMs!;
   const items = [...browser.events, ...browser.states, ...browser.animations].map(({ atMs, ...item }) => ({ ...item, estimatedVideoMs: atMs + offset }));
-  const near = items.filter(item => Math.abs(item.estimatedVideoMs - timeMs) <= 500).sort((a, b) => a.estimatedVideoMs - b.estimatedVideoMs).slice(0, 12);
+  const near: Array<(typeof items)[number] & { baseline?: boolean }> = items.filter(item => Math.abs(item.estimatedVideoMs - timeMs) <= 500).sort((a, b) => a.estimatedVideoMs - b.estimatedVideoMs).slice(0, 12);
   const baseline = items.filter(item => "text" in item && item.estimatedVideoMs < timeMs - 500).sort((a, b) => b.estimatedVideoMs - a.estimatedVideoMs)[0];
-  if (baseline && !near.some(item => "text" in item && item.estimatedVideoMs <= timeMs)) near.unshift({ ...baseline });
+  if (baseline && !near.some(item => "text" in item && item.estimatedVideoMs <= timeMs)) near.unshift({ ...baseline, baseline: true });
   return { page: { devicePixelRatio: browser.devicePixelRatio, viewport: browser.viewport }, items: near.slice(0, 12) };
 }

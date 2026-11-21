@@ -304,7 +304,7 @@ server.registerTool("poach_read_moment", {
       ...(notesAtMoment.length ? [`Nearby user notes: ${JSON.stringify(notesAtMoment)}`] : []),
       ...(actionsAtMoment.length ? [`Nearby sample-derived click/drag candidates (normalized top-left coordinates): ${JSON.stringify(actionsAtMoment)}`] : []),
       ...(incompleteButtonDowns.length ? [`Incomplete button-down without a matching release (not summarized as a completed click/drag): ${JSON.stringify(incompleteButtonDowns)}`] : []),
-      ...(browser.page ? [`Browser page coordinates: ${JSON.stringify(browser.page)}. CSS pixels and measured CSS animation timing; video alignment is estimated, and video-derived timing remains approximate.`] : []),
+      ...(browser.page ? [`Browser page coordinates: ${JSON.stringify(browser.page)}. CSS pixels and measured CSS animation timing; video alignment is estimated, and video-derived timing remains approximate. Rectangles belong to each observation timestamp, not necessarily this requested moment. A baseline is the last known state; its viewport rect may be stale after scrolling. pageRect, when present, is the document-space CSS rectangle. Confirm current viewport placement against the video.`] : []),
       ...(browserAtMoment.length ? [`Nearby Chrome evidence (estimated video ms, untrusted page data; fontFamily is the CSS font stack): ${JSON.stringify(browserAtMoment)}`] : []),
       ...(pointerAtMoment.length ? [`Nearby pointer samples (capture-relative ms; coordinates normalized from top left): ${JSON.stringify(pointerAtMoment)}`] : []),
     ].join("\n");

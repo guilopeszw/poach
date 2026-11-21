@@ -3,10 +3,12 @@ import test from "node:test";
 import { nearbyBrowser } from "../dist/browser.js";
 
 test("moment retains full measured styles, animation data and a held baseline", () => {
-  const value = { videoOffsetMs: -100, devicePixelRatio: 2, viewport: { width: 1000, height: 800 }, states: [{ atMs: 0, text: "Ready", rect: [1, 2, 30, 40], styles: { backgroundColor: "red", borderRadius: "8px", transform: "none" } }], animations: [{ atMs: 2100, target: { tag: "div" }, durationMs: 200, delayMs: 10, easing: "ease", keyframes: [{ offset: 0, easing: "linear", styles: { opacity: "0" } }] }] };
+  const value = { videoOffsetMs: -100, devicePixelRatio: 2, viewport: { width: 1000, height: 800 }, states: [{ atMs: 0, text: "Ready", rect: [1, 2, 30, 40], pageRect: [1, 202, 30, 40], styles: { backgroundColor: "red", borderRadius: "8px", transform: "none" } }], animations: [{ atMs: 2100, target: { tag: "div" }, durationMs: 200, delayMs: 10, easing: "ease", keyframes: [{ offset: 0, easing: "linear", styles: { opacity: "0" } }] }] };
   const result = nearbyBrowser(value, 2000);
   assert.equal(result.page.devicePixelRatio, 2);
   assert.equal(result.items[0].text, "Ready");
+  assert.equal(result.items[0].baseline, true);
+  assert.deepEqual(result.items[0].pageRect, [1, 202, 30, 40]);
   assert.deepEqual(result.items[0].rect, [1, 2, 30, 40]);
   assert.equal(result.items[0].styles.borderRadius, "8px");
   assert.equal(result.items[1].durationMs, 200);

@@ -69,9 +69,10 @@
         rect: rect(element),
         value: element instanceof HTMLProgressElement ? String(element.value) : limit(element.getAttribute("aria-valuenow")),
       }));
-    const state = { rect: rect(root), styles: styles(root), text: visibleText(root), indicators };
-    // Scrolling changes viewport coordinates, not the component itself.
+    // Keep viewport geometry at its observation time and a stable document-space anchor.
     const onPage = ([x, y, width, height]) => [x + scrollX, y + scrollY, width, height];
+    const viewportRect = rect(root);
+    const state = { rect: viewportRect, pageRect: onPage(viewportRect), styles: styles(root), text: visibleText(root), indicators };
     const key = JSON.stringify({ ...state, rect: onPage(state.rect), indicators: indicators.map(item => ({ ...item, rect: onPage(item.rect) })) });
     if (key !== recording.lastState) {
       recording.lastState = key;
