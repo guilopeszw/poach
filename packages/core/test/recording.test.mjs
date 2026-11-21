@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
-import { inspectRecording, inspectVideo, readVideoMoment } from "../dist/index.js";
+import { inspectRecording, inspectVideo, readVideoMoment, extractPalette } from "../dist/index.js";
 
 const exec = promisify(execFile);
 
@@ -73,4 +73,26 @@ test("batched samples reject truncated output and decoder failures", async (t) =
     await writeFile(decoder, "#!/bin/sh\nprintf 'P7\\nWIDTH 999999\\nHEIGHT 64\\nDEPTH 3\\nMAXVAL 255\\nENDHDR\\n'\n");
     await assert.rejects(inspectVideo(source), /Invalid PAM/);
   } finally { process.env.PATH = previous; }
+});
+
+test("documented maximum sampling options retain more than 64 MiB across frames", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "poach-max-sample-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, "maximum.mov");
+  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=256x144:rate=24", "-t", "30", "-c:v", "libx264", source]);
+  const result = await inspectVideo(source, { outputDirectory: directory, sampleWidth: 256, samplesPerSecond: 24 });
+  assert.ok(result.keyframes.length > 0);
+});
+
+test("multi-video recordings retain automatic stream selection and legacy seek points", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "poach-multi-stream-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, "multi.mov");
+  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=red:size=96x64:rate=12", "-f", "lavfi", "-i", "color=blue:size=160x90:rate=15", "-t", "1", "-map", "0:v", "-map", "1:v", "-c:v", "libx264", "-disposition:v:0", "0", "-disposition:v:1", "default", source]);
+  const result = await inspectVideo(source, { outputDirectory: directory });
+  const { stdout: raw } = await exec("ffmpeg", ["-v", "error", "-i", source, "-frames:v", "1", "-vf", "scale=96:-2:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer" });
+  assert.deepEqual(result.palette, extractPalette({ timeMs: 0, pixels: raw, width: 96, height: 54, channels: 3 }));
+  const frame = await readVideoMoment(source, 500);
+  assert.equal(frame.readUInt32BE(16), 160);
+  assert.equal(frame.readUInt32BE(20), 90);
 });

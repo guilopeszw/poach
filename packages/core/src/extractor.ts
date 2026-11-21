@@ -71,14 +71,46 @@ export async function inspectRecording(videoFile: string, options: ExtractOption
 
 // ScreenCaptureKit may store one frame for several seconds of unchanged pixels.
 // Resolve the frame already on screen, then seek between its PTS and its predecessor.
-async function presentationTimes(sourcePath: string): Promise<number[]> {
-  const data = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_packets",
-    "-show_entries", "format=start_time:packet=pts_time", "-of", "json", sourcePath]);
-  const probe = JSON.parse(data.toString("utf8")) as { format?: { start_time?: string }; packets?: { pts_time?: string }[] };
+interface VideoTimeline {
+  /** Preserve the original first-video-stream sampling grid. */
+  seekTimes: number[];
+  /** Actual presentation frames of the stream FFmpeg will decode. */
+  decodeTimes: number[];
+  streamIndex: number;
+}
+
+async function selectedVideoStream(sourcePath: string): Promise<number> {
+  // Let the installed FFmpeg apply its own default/resolution/attached-picture rules.
+  // This zero-frame initialization is only needed for files with multiple video streams.
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "info", "-i", sourcePath,
+      "-an", "-sn", "-dn", "-frames:v", "0", "-vcodec", "pam", "-f", "image2pipe", "pipe:1"],
+      { stdio: ["ignore", "ignore", "pipe"] });
+    let diagnostics = "";
+    child.stderr.on("data", (chunk: Buffer) => { diagnostics = (diagnostics + chunk.toString("utf8")).slice(-32_768); });
+    child.on("error", reject);
+    child.on("close", code => {
+      const selected = /Stream #0:(\d+)[^\n]* -> #0:0/.exec(diagnostics);
+      if (code !== 0 || !selected) reject(new Error(`Could not determine FFmpeg's selected video stream: ${diagnostics.slice(-2000)}`));
+      else resolvePromise(Number(selected[1]));
+    });
+  });
+}
+
+async function presentationTimes(sourcePath: string): Promise<VideoTimeline> {
+  const data = await run("ffprobe", ["-v", "error", "-select_streams", "v", "-show_packets",
+    "-show_entries", "stream=index:format=start_time:packet=stream_index,pts_time", "-of", "json", sourcePath]);
+  const probe = JSON.parse(data.toString("utf8")) as { streams?: { index: number }[]; format?: { start_time?: string }; packets?: { stream_index: number; pts_time?: string }[] };
+  const firstIndex = probe.streams?.[0]?.index;
+  if (firstIndex === undefined) throw new Error("Recording has no video stream");
+  const streamIndex = probe.streams!.length > 1 ? await selectedVideoStream(sourcePath) : firstIndex;
   const start = Number(probe.format?.start_time) || 0;
-  const times = [...new Set((probe.packets ?? []).map(packet => Number(packet.pts_time) - start).filter(Number.isFinite))].sort((a, b) => a - b);
-  if (!times.length) throw new Error("Recording has no timestamped video frames");
-  return times;
+  const timesFor = (index: number) => [...new Set((probe.packets ?? []).filter(packet => packet.stream_index === index)
+    .map(packet => Number(packet.pts_time) - start).filter(Number.isFinite))].sort((a, b) => a - b);
+  const seekTimes = timesFor(firstIndex);
+  const decodeTimes = streamIndex === firstIndex ? seekTimes : timesFor(streamIndex);
+  if (!seekTimes.length || !decodeTimes.length) throw new Error("Recording has no timestamped video frames");
+  return { seekTimes, decodeTimes, streamIndex };
 }
 
 function seekForMoment(times: readonly number[], seconds: number): number {
@@ -94,7 +126,7 @@ function seekForMoment(times: readonly number[], seconds: number): number {
 
 // Decode only the distinct presentation frames selected by the existing seek rule.
 // PAM carries dimensions with each RGB frame, including rotated and odd-sized media.
-async function readFrames(videoPath: string, seeks: readonly number[], times: readonly number[], width: number): Promise<FrameSample[]> {
+async function readFrames(videoPath: string, seeks: readonly number[], times: readonly number[], width: number, streamIndex: number): Promise<FrameSample[]> {
   const targets = [...new Set(seeks.map(seek => {
     const target = times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005);
     if (target === undefined) throw new Error(`Could not decode frame at ${Math.round(seek * 1000)} ms`);
@@ -102,27 +134,24 @@ async function readFrames(videoPath: string, seeks: readonly number[], times: re
   }))].sort((a, b) => a - b);
   const balanced = (terms: string[]): string => terms.length === 1 ? terms[0]! : `(${balanced(terms.slice(0, Math.floor(terms.length / 2)))}+${balanced(terms.slice(Math.floor(terms.length / 2)))})`;
   const select = balanced(targets.map(time => `between(t,${(time - 0.0000005).toFixed(7)},${(time + 0.0000005).toFixed(7)})`));
-  const decoded = await decodeSamples(videoPath, select, width, targets.length);
+  const decoded = await decodeSamples(videoPath, select, width, targets.length, streamIndex);
   return seeks.map(seek => decoded[targets.indexOf(times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005)!)]!);
 }
 
-async function decodeSamples(videoPath: string, select: string, width: number, count: number): Promise<FrameSample[]> {
+async function decodeSamples(videoPath: string, select: string, width: number, count: number, streamIndex: number): Promise<FrameSample[]> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn("ffmpeg", ["-v", "error", "-copyts", "-start_at_zero", "-i", videoPath,
+    const child = spawn("ffmpeg", ["-v", "error", "-copyts", "-start_at_zero", "-i", videoPath, "-map", `0:${streamIndex}`,
       "-vf", `select='${select}',scale=${width}:-2:flags=area`, "-fps_mode", "passthrough",
       "-frames:v", String(count), "-f", "image2pipe", "-vcodec", "pam", "-pix_fmt", "rgb24", "pipe:1"],
       { stdio: ["ignore", "pipe", "pipe"] });
     const frames: FrameSample[] = [];
     let pending = Buffer.alloc(0);
-    let total = 0;
     let stderr = "";
     let failure: Error | undefined;
     const fail = (error: Error) => { failure ??= error; child.kill("SIGKILL"); };
     child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-2000); });
     child.stdout.on("data", (chunk: Buffer) => {
       if (failure) return;
-      total += chunk.length;
-      if (total > 64 * 1024 * 1024) return fail(new Error("ffmpeg samples exceeded the 64 MiB safety limit"));
       pending = Buffer.concat([pending, chunk]);
       try {
         while (pending.length) {
@@ -131,6 +160,7 @@ async function decodeSamples(videoPath: string, select: string, width: number, c
             if (pending.length > 1024) throw new Error("Invalid PAM frame header");
             break;
           }
+          if (end > 1024) throw new Error("Invalid PAM frame header");
           const header = pending.subarray(0, end + 7).toString("ascii");
           const w = Number(/^WIDTH (\d+)$/m.exec(header)?.[1]);
           const h = Number(/^HEIGHT (\d+)$/m.exec(header)?.[1]);
@@ -182,7 +212,7 @@ export async function readVideoMoment(videoFile: string, timeMs: number): Promis
   if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("Timestamp must be a nonnegative number of milliseconds");
   const { sourcePath, durationMs } = await probeMomentSource(videoFile);
   if (timeMs >= durationMs) throw new Error("Timestamp must be before the end of the recording");
-  return referencePNG(sourcePath, timeMs, seekForMoment(await presentationTimes(sourcePath), timeMs / 1000));
+  return referencePNG(sourcePath, timeMs, seekForMoment((await presentationTimes(sourcePath)).seekTimes, timeMs / 1000));
 }
 
 /** Read a short sequence around a release, ending before the next recorded drag. */
@@ -191,7 +221,8 @@ export async function readDragReleaseFrames(videoFile: string, releaseTimeMs: nu
   const frames: Array<{ timeMs: number; png: Buffer }> = [];
   const endTimeMs = Math.min(30_000, Math.ceil(durationMs) - 1, (nextDragTimeMs ?? Infinity) - 1);
   if (releaseTimeMs > endTimeMs) return { endTimeMs, frames };
-  const times = await presentationTimes(sourcePath);
+  const timeline = await presentationTimes(sourcePath);
+  const times = timeline.seekTimes;
   const offsets = [-80, 150, 800, 2_000, 4_000];
   const sampleTimes = new Set(offsets.map((offset) => Math.max(0, Math.min(releaseTimeMs + offset, endTimeMs))));
   sampleTimes.add(endTimeMs);
@@ -247,13 +278,14 @@ export async function inspectVideo(videoFile: string, options: ExtractOptions = 
   const sampleRate = Math.max(2, Math.min(24, Math.round(options.samplesPerSecond ?? DEFAULT_SAMPLES_PER_SECOND)));
   const sampleCount = Math.max(2, Math.min(720, Math.ceil(durationSeconds * sampleRate)));
   options.onProgress?.("motion");
-  const times = await presentationTimes(sourcePath);
+  const timeline = await presentationTimes(sourcePath);
+  const times = timeline.seekTimes;
   const sampleTimes = Array.from({ length: sampleCount }, (_, index) => {
     const time = Math.min(durationSeconds - 0.001, (index / (sampleCount - 1)) * durationSeconds);
     return Math.round(Math.max(0, time) * 1000);
   });
   const seeks = sampleTimes.map(time => seekForMoment(times, time / 1000));
-  const decoded = await readFrames(sourcePath, seeks, times, sampleWidth);
+  const decoded = await readFrames(sourcePath, seeks, timeline.decodeTimes, sampleWidth, timeline.streamIndex);
   const frames = decoded.map((frame, index) => ({ ...frame, timeMs: sampleTimes[index]! }));
   const deltas = frames.slice(1).map((frame, index) => pixelDifference(frames[index]!, frame));
   const keys = chooseKeyframes(frames, deltas);
