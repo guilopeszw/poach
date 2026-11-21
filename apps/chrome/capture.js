@@ -59,6 +59,41 @@
     return parts.join(" ");
   }
 
+  // Adapted from AnyPoach by Miguel Mochizuki (Apache-2.0); see NOTICE.
+  // Keep only the 40 largest visible descendants while traversing, then restore DOM order.
+  function measureComponents(root) {
+    if (!root.isConnected || root.closest(excludedText)) return [];
+    const [rootX, rootY, rootWidth, rootHeight] = rect(root);
+    const kept = [];
+    let order = 0;
+    const rank = (a, b) => b.area - a.area || Number(Boolean(b.text)) - Number(Boolean(a.text)) || a.order - b.order;
+    const visit = (parent, depth) => {
+      for (const element of parent.children) {
+        if (element.matches(excludedText) || !element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+        const box = rect(element);
+        const width = Math.min(box[0] + box[2], rootX + rootWidth) - Math.max(box[0], rootX);
+        const height = Math.min(box[1] + box[3], rootY + rootHeight) - Math.max(box[1], rootY);
+        if (box[2] > 0 && box[3] > 0 && width > 0 && height > 0) {
+          const text = limit([...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent.trim()).filter(Boolean).join(" "), 80);
+          kept.push({ element, box, text, area: width * height, order: order++ });
+          kept.sort(rank);
+          if (kept.length > 40) kept.pop();
+        }
+        if (depth < 6) visit(element, depth + 1);
+      }
+    };
+    visit(root, 1);
+    kept.sort((a, b) => a.order - b.order);
+    const indexOf = new Map(kept.map((item, index) => [item.element, index]));
+    const round = value => Math.round(value * 10) / 10;
+    return kept.map(({ element, box, text }, id) => {
+      let ancestor = element.parentElement;
+      while (ancestor && ancestor !== root && !indexOf.has(ancestor)) ancestor = ancestor.parentElement;
+      return { id, parent: ancestor && ancestor !== root ? indexOf.get(ancestor) : -1, target: describe(element),
+        rect: [round(box[0] - rootX), round(box[1] - rootY), box[2], box[3]], styles: styles(element), text };
+    });
+  }
+
   function sample() {
     if (!recording || !recording.root.isConnected) return;
     const { root, states, animations, seenAnimations } = recording;
@@ -136,6 +171,7 @@
     return {
       version: 1, origin: location.origin, target, startedAtEpochMs,
       devicePixelRatio, viewport: { width: innerWidth, height: innerHeight },
+      components: recording.components, componentsAtEnd: recording.componentsAtEnd,
       durationMs: relativeTime(), events, states, animations, targetRemoved: !root.isConnected,
     };
   }
@@ -147,6 +183,7 @@
   function finish(send = true) {
     if (!recording) return result;
     sample();
+    recording.componentsAtEnd = measureComponents(recording.root);
     result = snapshot();
     const { abort, interval, stream, timeout } = recording;
     abort.abort();
@@ -167,7 +204,7 @@
   function start(root) {
     const abort = new AbortController();
     recording = {
-      root, abort, target: describe(root), startedAtEpochMs: now(),
+      root, abort, target: describe(root), startedAtEpochMs: now(), components: measureComponents(root),
       events: [], states: [], animations: [], seenAnimations: new WeakSet(), lastDragOver: -Infinity,
       interval: setInterval(sample, 100),
       stream: setInterval(() => { sendEvidence(snapshot(), false).catch(() => {}); }, 1000),

@@ -44,6 +44,17 @@ struct PoachBrowserEvidence: Codable {
         let keyframes: [Frame]
     }
 
+    struct Component: Codable {
+        let id: Int
+        let parent: Int
+        let target: Element
+        let rect: [Double]
+        let styles: [String: String]
+        let text: String
+    }
+    var components: [Component]?
+    var componentsAtEnd: [Component]?
+
     struct Viewport: Codable { let width: Double; let height: Double }
     var devicePixelRatio: Double?
     var viewport: Viewport?
@@ -82,8 +93,21 @@ struct PoachBrowserEvidence: Codable {
                 .allSatisfy({ (0...capture.durationMs).contains($0) }) else { throw ImportError.invalidFile }
         if let ratio = capture.devicePixelRatio, !ratio.isFinite || ratio <= 0 || ratio > 16 { throw ImportError.invalidFile }
         if let viewport = capture.viewport, !viewport.width.isFinite || !viewport.height.isFinite || viewport.width <= 0 || viewport.height <= 0 { throw ImportError.invalidFile }
+        try capture.validateComponents()
         capture.videoOffsetMs = nil
         return capture
+    }
+
+    func validateComponents() throws {
+        for list in [components, componentsAtEnd].compactMap({ $0 }) {
+            guard list.count <= 40, list.enumerated().allSatisfy({ index, item in
+                item.id == index && item.parent >= -1 && item.parent < item.id && item.rect.count == 4
+                && item.rect.allSatisfy(\.isFinite) && item.rect[2] > 0 && item.rect[3] > 0
+                && item.text.count <= 80 && item.styles.count <= 17
+                && item.styles.allSatisfy({ $0.key.count <= 40 && $0.value.count <= 240 })
+                && item.target.tag.count <= 120 && item.target.role.count <= 120 && item.target.classes.count <= 240
+            }) else { throw ImportError.invalidFile }
+        }
     }
 
     func aligned(to recording: ClosedRange<Int>) -> Self? {

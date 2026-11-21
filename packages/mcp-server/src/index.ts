@@ -8,7 +8,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { nearbyBrowser } from "./browser.js";
+import { nearbyBrowser, componentSummary, browserSchema } from "./browser.js";
 
 const server = new McpServer({ name: "poach", version: "0.1.0" });
 
@@ -185,6 +185,9 @@ server.registerTool("poach_read_brief", {
 }, async ({ briefId, includeKeyframes }) => {
   try {
     const brief = z.object({ version: z.literal(1), briefId: z.string().uuid().optional(), sharedAt: z.number(), context: z.string(), instruction: z.string(), evidence: z.record(z.unknown()) }).parse(await readSharedBrief(briefId));
+    const browserValue = brief.evidence.browserEvidence;
+    if (browserValue && typeof browserValue === "object" && ("components" in browserValue || "componentsAtEnd" in browserValue)
+        && !browserSchema.safeParse(browserValue).success) throw new Error("Invalid browser component measurements");
     const responseBrief = {
       ...brief,
       evidence: {
@@ -195,6 +198,8 @@ server.registerTool("poach_read_brief", {
     const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
       { type: "text", text: JSON.stringify(responseBrief, null, 2) },
     ];
+    const components = componentSummary(brief.evidence.browserEvidence);
+    if (components) content.push({ type: "text", text: components });
     if (includeKeyframes) {
       const frames = z.array(z.object({ imagePath: z.string(), kind: z.string(), timeMs: z.number() })).max(3).parse(brief.evidence.keyframes);
       for (const frame of frames) {

@@ -31,7 +31,11 @@ async function handle(message) {
   if (!pairingCode) return { needsPairing: true, error: "Pair with Poach first." };
   if (message.poachBridge === "ping") return send("/pair", pairingCode);
   if (message.poachBridge === "openCapture") return send("/open-capture", pairingCode, { method: "POST" });
-  const body = JSON.stringify(message.evidence);
+  let body = JSON.stringify(message.evidence);
+  if (new Blob([body]).size > 256 * 1024 && message.evidence.componentsAtEnd) {
+    const { componentsAtEnd, ...withoutEnd } = message.evidence;
+    body = JSON.stringify(withoutEnd);
+  }
   if (new Blob([body]).size > 256 * 1024) return { error: "This capture exceeds Poach’s evidence limit." };
   return send("/capture", pairingCode, {
     method: "POST",

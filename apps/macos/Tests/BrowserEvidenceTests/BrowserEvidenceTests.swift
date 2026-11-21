@@ -16,6 +16,14 @@ import Foundation
         let roundTrip = try JSONDecoder().decode(PoachBrowserEvidence.self, from: JSONEncoder().encode(aligned))
         precondition(roundTrip.devicePixelRatio == 2 && roundTrip.viewport?.width == 1000)
         precondition(roundTrip.states.first?.pageRect == [0, 200, 100, 50])
+        let component: [String: Any] = ["id": 0, "parent": -1, "target": element, "rect": [0, 0, 30, 20], "styles": ["fontSize": "12px"], "text": "Child"]
+        raw["components"] = [component]
+        let measured = try PoachBrowserEvidence.decode(JSONSerialization.data(withJSONObject: raw))
+        let restored = try JSONDecoder().decode(PoachBrowserEvidence.self, from: JSONEncoder().encode(measured))
+        precondition(restored.components?.first?.text == "Child")
+        raw["components"] = Array(repeating: component, count: 41)
+        do { _ = try PoachBrowserEvidence.decode(JSONSerialization.data(withJSONObject: raw)); fatalError("Oversized tree accepted") } catch {}
+        raw.removeValue(forKey: "components")
         raw["devicePixelRatio"] = -1
         do { _ = try PoachBrowserEvidence.decode(JSONSerialization.data(withJSONObject: raw)); fatalError("Invalid ratio accepted") } catch {}
         print("Browser evidence compatibility, alignment and validation passed")

@@ -10,10 +10,12 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
-    "build:connectors": "pnpm build && node scripts/build-connectors.mjs"
+    "build:connectors": "pnpm build && node scripts/build-connectors.mjs",
+    "test:chrome": "node --test apps/chrome/test/*.test.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.12",
+    "playwright": "1.65.1",
     "turbo": "^2.5.0",
     "typescript": "^5.8.0"
   }

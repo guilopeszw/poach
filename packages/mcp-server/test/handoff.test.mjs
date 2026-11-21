@@ -55,6 +55,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
     { timeMs: 2000, kind: "up", x: 1, y: 0.5, button: "left", withinCapture: false },
   );
   brief.evidence.browserEvidence = {
+    components: [{ id: 0, parent: -1, target: { tag: "span" }, rect: [0, 0, 30, 20], text: "Label", styles: { fontSize: "12px" } }],
     videoOffsetMs: -100,
     events: [{ atMs: 1075, type: "drop", target: { tag: "div" } }],
     states: [{
@@ -81,6 +82,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.ok(!shared.isError);
   assert.equal(shared.structuredContent.context, brief.context);
   assert.deepEqual(shared.structuredContent.evidence.browserEvidence, brief.evidence.browserEvidence);
+  assert.ok(shared.content.some(item => item.type === "text" && item.text.startsWith("Chrome components: 1")));
   const sharedImages = shared.content.filter(item => item.type === "image");
   assert.equal(sharedImages.length, 4);
   assert.ok(shared.content.some(item => item.type === "text" && item.text.startsWith("After drag release: 1699 ms")));

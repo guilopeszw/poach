@@ -5,7 +5,11 @@ const styles = z.record(z.enum(styleNames), z.string().max(240));
 const rect = z.array(z.number().finite()).length(4);
 const target = z.object({ tag: z.string().max(120), role: z.string().max(120).optional(), classes: z.string().max(240).optional() });
 const timestamp = z.number().finite().min(0).max(90_000);
+const component = z.object({ id: z.number().int().nonnegative(), parent: z.number().int().min(-1), target, rect: rect.refine(value => value[2]! > 0 && value[3]! > 0), styles, text: z.string().max(80) });
+const components = z.array(component).max(40).refine(items => items.every((item, index) => item.id === index && item.parent < item.id));
 export const browserSchema = z.object({
+  components: components.optional(),
+  componentsAtEnd: components.optional(),
   videoOffsetMs: z.number().finite().optional(),
   devicePixelRatio: z.number().positive().max(16).optional(),
   viewport: z.object({ width: z.number().positive(), height: z.number().positive() }).optional(),
@@ -25,4 +29,10 @@ export function nearbyBrowser(value: unknown, timeMs: number) {
   const baseline = items.filter(item => "text" in item && item.estimatedVideoMs < timeMs - 500).sort((a, b) => b.estimatedVideoMs - a.estimatedVideoMs)[0];
   if (baseline && !near.some(item => "text" in item && item.estimatedVideoMs <= timeMs)) near.unshift({ ...baseline, baseline: true });
   return { page: { devicePixelRatio: browser.devicePixelRatio, viewport: browser.viewport }, items: near.slice(0, 12) };
+}
+
+export function componentSummary(value: unknown): string | undefined {
+  const browser = browserSchema.safeParse(value);
+  if (!browser.success || !browser.data.components?.length) return undefined;
+  return `Chrome components: ${browser.data.components.length} measured at pin time (${browser.data.componentsAtEnd?.length ?? "unknown"} at the end). Use evidence.browserEvidence.components for measured layout, typography and colors; these snapshots are not continuous tracking.`;
 }

@@ -1,0 +1,8 @@
+Poach
+
+The descendant-measurement algorithm in apps/chrome/capture.js
+are adapted from AnyPoach (https://github.com/MiguelMochizuki/anypoach),
+Copyright 2026 Miguel Mochizuki and the AnyPoach contributors, Apache License 2.0.
+AnyPoach's extension was itself adapted from Poach. The adaptations here retain
+Poach's native client, bridge and data handling, bound measurement storage,
+and integrate measurements with Poach's handoff lifecycle.

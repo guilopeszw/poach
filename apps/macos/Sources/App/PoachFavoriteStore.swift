@@ -129,6 +129,7 @@ enum PoachFavoriteStore {
     private static func writeFavorite(name: String, result: PoachInspection, context: String,
                                       annotations: [InteractionAnnotation],
                                       frameData: (PoachKeyframe, Int) throws -> Data) throws -> UUID {
+        try result.browserEvidence?.validateComponents()
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw StoreError.missingName }
         guard !result.keyframes.isEmpty else { throw StoreError.missingFrames }
