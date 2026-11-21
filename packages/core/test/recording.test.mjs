@@ -88,7 +88,7 @@ test("multi-video recordings retain automatic stream selection and legacy seek p
   const directory = await mkdtemp(join(tmpdir(), "poach-multi-stream-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const source = join(directory, "multi.mov");
-  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=red:size=96x64:rate=12", "-f", "lavfi", "-i", "color=blue:size=160x90:rate=15", "-t", "1", "-map", "0:v", "-map", "1:v", "-c:v", "libx264", "-disposition:v:0", "0", "-disposition:v:1", "default", source]);
+  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=red:size=96x64:rate=12", "-f", "lavfi", "-i", "color=blue:size=160x90:rate=15", "-t", "1", "-map", "0:v", "-map", "1:v", "-c:v", "libx264", "-disposition:v:0", "0", "-disposition:v:1", "default", "-metadata", "comment=Stream #0:0 -> #0:0", source]);
   const result = await inspectVideo(source, { outputDirectory: directory });
   const { stdout: raw } = await exec("ffmpeg", ["-v", "error", "-i", source, "-frames:v", "1", "-vf", "scale=96:-2:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer" });
   assert.deepEqual(result.palette, extractPalette({ timeMs: 0, pixels: raw, width: 96, height: 54, channels: 3 }));

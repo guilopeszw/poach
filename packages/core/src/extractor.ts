@@ -87,12 +87,36 @@ async function selectedVideoStream(sourcePath: string): Promise<number> {
       "-an", "-sn", "-dn", "-frames:v", "0", "-vcodec", "pam", "-f", "image2pipe", "pipe:1"],
       { stdio: ["ignore", "ignore", "pipe"] });
     let diagnostics = "";
-    child.stderr.on("data", (chunk: Buffer) => { diagnostics = (diagnostics + chunk.toString("utf8")).slice(-32_768); });
+    let pendingLine = "";
+    let droppingLine = false;
+    let mapping = false;
+    let mappingComplete = false;
+    let selected: number | undefined;
+    child.stderr.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      diagnostics = (diagnostics + text).slice(-32_768);
+      const lines = text.split("\n");
+      for (const [index, part] of lines.entries()) {
+        if (!droppingLine) pendingLine += part;
+        if (pendingLine.length > 32_768) { pendingLine = ""; droppingLine = true; }
+        if (index === lines.length - 1) continue;
+        if (!droppingLine && !mappingComplete) {
+          const line = pendingLine.trimEnd();
+          if (line === "Stream mapping:") { mapping = true; selected = undefined; }
+          else if (line.startsWith("Output #0,")) mappingComplete = true;
+          else if (mapping) {
+            const match = /^[ \t]+Stream #0:(\d+)[^\r\n]* -> #0:0\b/.exec(line);
+            if (match) selected = Number(match[1]);
+          }
+        }
+        pendingLine = "";
+        droppingLine = false;
+      }
+    });
     child.on("error", reject);
     child.on("close", code => {
-      const selected = /Stream #0:(\d+)[^\n]* -> #0:0/.exec(diagnostics);
-      if (code !== 0 || !selected) reject(new Error(`Could not determine FFmpeg's selected video stream: ${diagnostics.slice(-2000)}`));
-      else resolvePromise(Number(selected[1]));
+      if (code !== 0 || selected === undefined) reject(new Error(`Could not determine FFmpeg's selected video stream: ${diagnostics.slice(-2000)}`));
+      else resolvePromise(selected);
     });
   });
 }
@@ -104,6 +128,7 @@ async function presentationTimes(sourcePath: string): Promise<VideoTimeline> {
   const firstIndex = probe.streams?.[0]?.index;
   if (firstIndex === undefined) throw new Error("Recording has no video stream");
   const streamIndex = probe.streams!.length > 1 ? await selectedVideoStream(sourcePath) : firstIndex;
+  if (!probe.streams!.some(stream => stream.index === streamIndex)) throw new Error("FFmpeg selected an unavailable video stream");
   const start = Number(probe.format?.start_time) || 0;
   const timesFor = (index: number) => [...new Set((probe.packets ?? []).filter(packet => packet.stream_index === index)
     .map(packet => Number(packet.pts_time) - start).filter(Number.isFinite))].sort((a, b) => a - b);
