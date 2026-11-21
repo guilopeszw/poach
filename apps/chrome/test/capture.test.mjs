@@ -54,3 +54,12 @@ test("scrolling alone does not consume browser state slots", async () => {
     assert.equal(count, 1);
   } finally { await page.close(); }
 });
+
+test("visible descendants survive boxless wrappers and visibility overrides", async () => {
+  const page = await pageWithCapture(`<section id="root" style="width:500px;height:500px"><div style="display:contents"><button>Boxless child</button></div><div style="visibility:hidden"><button style="visibility:visible">Visible override</button></div><div style="opacity:0"><button>Private transparent subtree</button></div><div contenteditable><button>Editable subtree</button></div><div style="display:none"><button style="display:block">Not rendered</button></div></section>`);
+  try {
+    const components = await page.evaluate(() => __poachTest.measureComponents(document.querySelector("#root")));
+    assert.deepEqual(components.map(item => item.text), ["Boxless child", "Visible override"]);
+    assert.ok(components.every(item => item.parent === -1));
+  } finally { await page.close(); }
+});

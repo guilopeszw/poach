@@ -69,11 +69,16 @@
     const rank = (a, b) => b.area - a.area || Number(Boolean(b.text)) - Number(Boolean(a.text)) || a.order - b.order;
     const visit = (parent, depth) => {
       for (const element of parent.children) {
-        if (element.matches(excludedText) || !element.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+        if (element.matches(excludedText)) continue;
+        const computed = getComputedStyle(element);
+        // Boxless wrappers and visibility:hidden can contain visible descendants.
+        // display:none, content-visibility:hidden and opacity:0 cannot be overridden by children.
+        if (computed.display === "none" || computed.contentVisibility === "hidden" || Number(computed.opacity) === 0) continue;
+        const visible = element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
         const box = rect(element);
         const width = Math.min(box[0] + box[2], rootX + rootWidth) - Math.max(box[0], rootX);
         const height = Math.min(box[1] + box[3], rootY + rootHeight) - Math.max(box[1], rootY);
-        if (box[2] > 0 && box[3] > 0 && width > 0 && height > 0) {
+        if (visible && box[2] > 0 && box[3] > 0 && width > 0 && height > 0) {
           const text = limit([...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent.trim()).filter(Boolean).join(" "), 80);
           kept.push({ element, box, text, area: width * height, order: order++ });
           kept.sort(rank);
