@@ -195,3 +195,9 @@ Shared images are captioned with their actual returned dimensions and, when avai
 `poach_read_moment` accepts optional `crop: {x, y, width, height}` in stored-video pixels from the top left and `maxSize` (16–8192, default 1280). Cropping occurs before resizing and never enlarges pixels. The 5 MiB MCP image limit still applies. Native resolution means the stored recording, which may already have been reduced during capture. Old briefs, favorites and `.poach` files remain readable without these optional fields.
 
 Verify a Retina capture, a capture downscaled to 1920 pixels, and an imported file. Check a detail crop and an out-of-bounds crop through MCP, then favorite/export/import/share and verify that dimensions survive.
+
+### Browser measurements at a moment
+
+`poach_read_moment` includes nearby measured browser rectangles, layout/color styles and available animation duration, delay, easing and keyframe offsets. Page viewport and device pixel ratio identify CSS coordinate units. The most recent prior state remains relevant until a later state replaces it. Browser/video alignment is estimated; video-derived timing is approximate, while browser animation timing comes from the page. CSS font stacks remain preferences, not proof of rendered glyph fonts.
+
+When attaching a browser session to a recording, Poach retains observations in the recording interval plus one second of margin and the state active at recording start. Scrolling alone does not consume a state slot. Run `bash scripts/test-browser-evidence.sh` and the MCP package tests to check compatibility, alignment and held states.
