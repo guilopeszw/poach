@@ -31,8 +31,8 @@ if [[ ! -f "$build/complete" ]]; then
   ./configure --disable-autodetect --disable-network --disable-doc --disable-debug --disable-everything \
     --enable-zlib --enable-bzlib --enable-protocol=file,pipe --enable-demuxer=mov,image2,image_png_pipe,image_jpeg_pipe,image_webp_pipe,image_tiff_pipe,image_bmp_pipe \
     --enable-decoder=h264,hevc,av1,vp8,vp9,mpeg4,mjpeg,png,webp,tiff,bmp,prores,rawvideo,qtrle,apng,gif,mpeg2video \
-    --enable-parser=h264,hevc,av1,vp9,mpeg4video,mjpeg,png,webp --enable-encoder=mpeg4,png,rawvideo \
-    --enable-muxer=mp4,image2pipe,rawvideo --enable-filter=scale,fps,format,trim,setpts,null
+    --enable-parser=h264,hevc,av1,vp9,mpeg4video,mjpeg,png,webp --enable-encoder=mpeg4,png,pam,rawvideo \
+    --enable-muxer=mp4,image2pipe,rawvideo --enable-filter=scale,fps,format,trim,setpts,null,select
   make -j"$(sysctl -n hw.ncpu)" ffmpeg ffprobe
   touch complete
 fi
