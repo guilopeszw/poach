@@ -5,7 +5,7 @@ import { chromium } from "playwright";
 
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined);
 const browser = await chromium.launch({ ...(chrome ? { executablePath: chrome } : {}), headless: true });
-const source = (await readFile(new URL("../capture.js", import.meta.url), "utf8")).replace('  chrome.runtime.onMessage.addListener', '  globalThis.__poachTest = { measureComponents, start, finish, sample, snapshot, select };\n  chrome.runtime.onMessage.addListener');
+const source = (await readFile(new URL("../capture.js", import.meta.url), "utf8")).replace('  chrome.runtime.onMessage.addListener', '  globalThis.__poachTest = { measureComponents, start, finish, sample, snapshot, select, cardModel, placeCard };\n  chrome.runtime.onMessage.addListener');
 
 test.after(() => browser.close());
 async function pageWithCapture(html) {
@@ -61,5 +61,39 @@ test("visible descendants survive boxless wrappers and visibility overrides", as
     const components = await page.evaluate(() => __poachTest.measureComponents(document.querySelector("#root")));
     assert.deepEqual(components.map(item => item.text), ["Boxless child", "Visible override"]);
     assert.ok(components.every(item => item.parent === -1));
+  } finally { await page.close(); }
+});
+
+test("inspector supports mouse and keyboard selection and cleans up every exit", async () => {
+  const page = await pageWithCapture('<button id="target" style="margin:40px;width:150px;height:50px;border-radius:12px;color:#123456;background:rgba(10,20,30,.5)">Pin me</button>');
+  try {
+    await page.evaluate(() => __poachTest.select());
+    await page.locator("#target").hover();
+    assert.equal(await page.locator("[data-poach-inspector]").count(), 1);
+    const model = await page.evaluate(() => __poachTest.cardModel(document.querySelector("#target")));
+    assert.equal(model.size, "150 × 50");
+    assert.ok(model.colors.some(item => item.hex === "#123456"));
+    const location = await page.locator("[data-poach-inspector]").boundingBox();
+    assert.ok(location.x >= 8 && location.y >= 8);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("[data-poach-inspector]").count(), 0);
+    await page.locator("#target").focus();
+    await page.evaluate(() => __poachTest.select());
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator("[data-poach-inspector]").count(), 0);
+    const snapshot = await page.evaluate(() => __poachTest.finish(false));
+    assert.equal(snapshot.target.tag, "body");
+    assert.ok(!JSON.stringify(snapshot).includes("data-poach-inspector"));
+  } finally { await page.close(); }
+});
+
+test("inspector removes itself when the highlighted target disappears", async () => {
+  const page = await pageWithCapture('<button id="target" style="margin:40px">Remove me</button>');
+  try {
+    await page.evaluate(() => __poachTest.select());
+    await page.locator("#target").hover();
+    await page.locator("#target").evaluate(element => element.remove());
+    await page.waitForFunction(() => !document.querySelector("[data-poach-inspector]"));
   } finally { await page.close(); }
 });
