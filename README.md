@@ -63,3 +63,11 @@ Poach analyzes the media on your Mac. During an explicit native screen recording
 </details>
 
 [Contributing and local development](CONTRIBUTING.md) · [License](LICENSE)
+
+### Image scale and details
+
+Shared images are captioned with their actual returned dimensions and, when available, stored-source dimensions. `evidence.capture` preserves `widthPx`, `heightPx`, `imageMaxSize` and a nullable `deviceScale`. Native captures additionally record `widthPoints` and `heightPoints`; `deviceScale` is the horizontal ratio of stored pixels to macOS points. Use both dimensions for exact coordinate mapping after encoder rounding. Imports have unknown display scale. Browser CSS pixels are a separate coordinate space.
+
+`poach_read_moment` accepts optional `crop: {x, y, width, height}` in stored-video pixels from the top left and `maxSize` (16–8192, default 1280). Cropping occurs before resizing and never enlarges pixels. The 5 MiB MCP image limit still applies. Native resolution means the stored recording, which may already have been reduced during capture. Old briefs, favorites and `.poach` files remain readable without these optional fields.
+
+Verify a Retina capture, a capture downscaled to 1920 pixels, and an imported file. Check a detail crop and an out-of-bounds crop through MCP, then favorite/export/import/share and verify that dimensions survive.
