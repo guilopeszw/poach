@@ -10,6 +10,13 @@ import { join } from "node:path";
 
 const server = new McpServer({ name: "poach", version: "0.1.0" });
 
+function imageDimensions(png: Buffer, capture: unknown): string {
+  if (png.length < 24 || png.toString("ascii", 12, 16) !== "IHDR") throw new Error("Invalid PNG dimensions");
+  const width = png.readUInt32BE(16), height = png.readUInt32BE(20);
+  const source = z.object({ widthPx: z.number().int().positive(), heightPx: z.number().int().positive(), deviceScale: z.number().positive().nullable().optional(), widthPoints: z.number().positive().optional(), heightPoints: z.number().positive().optional() }).safeParse(capture);
+  return `Image ${width}×${height} pixels; ${source.success ? `stored source ${source.data.widthPx}×${source.data.heightPx} pixels; macOS points ${source.data.widthPoints ?? "unknown"}×${source.data.heightPoints ?? "unknown"}; horizontal pixels per point ${source.data.deviceScale ?? "unknown"}` : "source size and scale unknown"}. Stored media may already be downscaled; browser CSS pixels use the browser viewport and devicePixelRatio.`;
+}
+
 const pointerTraceSchema = z.object({
   available: z.boolean().optional(),
   truncated: z.boolean().optional(),
@@ -194,7 +201,7 @@ server.registerTool("poach_read_brief", {
           if (!info.isFile() || info.size > 5 * 1024 * 1024) throw new Error("Keyframe exceeds the 5 MB image limit");
           const image = await readFile(frame.imagePath);
           if (!image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error("Keyframe is not a PNG");
-          content.push({ type: "text", text: `${frame.kind} at ${frame.timeMs} ms` });
+          content.push({ type: "text", text: `${frame.kind} at ${frame.timeMs} ms. ${imageDimensions(image, brief.evidence.capture)}` });
           content.push({ type: "image", data: image.toString("base64"), mimeType: "image/png" });
         } catch {
           content.push({ type: "text", text: `The ${frame.kind} keyframe is unavailable. Ask the user to capture and share again; do not infer its visual contents.` });
@@ -221,7 +228,7 @@ server.registerTool("poach_read_brief", {
               if (frame.png.length > 5 * 1024 * 1024) continue;
               const offset = frame.timeMs - releaseTimeMs;
               const phase = offset < 0 ? "Before drag release" : offset > 0 ? "After drag release" : "At drag release";
-              content.push({ type: "text", text: `${phase}: ${frame.timeMs} ms (${Math.abs(offset)} ms from release)` });
+              content.push({ type: "text", text: `${phase}: ${frame.timeMs} ms (${Math.abs(offset)} ms from release). ${imageDimensions(frame.png, brief.evidence.capture)}` });
               content.push({ type: "image", data: frame.png.toString("base64"), mimeType: "image/png" });
             }
           } catch {
@@ -238,14 +245,17 @@ server.registerTool("poach_read_brief", {
 server.registerTool("poach_read_moment", {
   title: "Inspect a moment in the shared recording",
   description: "Read a PNG frame at a specific timestamp from the latest or a selected explicitly shared Poach brief, with nearby sample-derived click/drag candidates and user notes. Shared briefs remain available by ID for 24 hours. Button transitions come from 120 Hz polling and brief actions may be missed or misclassified; incomplete presses are not treated as completed actions. Compare pointer coordinates with the frame to identify the target and visible result; do not infer causation from timing alone.",
-  inputSchema: { briefId: z.string().uuid().optional(), timeMs: z.number().min(0).max(30000).describe("Timestamp in milliseconds, before the recording ends") },
-}, async ({ briefId, timeMs }) => {
+  inputSchema: { briefId: z.string().uuid().optional(), timeMs: z.number().min(0).max(30000).describe("Timestamp in milliseconds, before the recording ends"),
+    maxSize: z.number().int().min(16).max(8192).default(1280).describe("Maximum image side in pixels; never enlarges"),
+    crop: z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), width: z.number().int().positive(), height: z.number().int().positive() }).optional().describe("Crop in stored-video pixels from top left, before resizing"),
+  },
+}, async ({ briefId, timeMs, maxSize, crop }) => {
   try {
     const brief = z.object({ briefId: z.string().uuid().optional(), sharedAt: z.number(), evidence: z.object({
       mediaType: z.literal("video"), sourcePath: z.string(),
     }).passthrough() }).parse(await readSharedBrief(briefId));
     if (!brief.evidence.sourcePath) throw new Error("This favorite keeps reference frames without the original recording. Use poach_read_brief to see its saved frames.");
-    const png = await readVideoMoment(brief.evidence.sourcePath, timeMs);
+    const png = await readVideoMoment(brief.evidence.sourcePath, timeMs, { maxSize, ...(crop ? { crop } : {}) });
     if (png.length > 5 * 1024 * 1024) throw new Error("Reference image exceeds the 5 MB limit");
     const annotations = z.array(z.object({ timeMs: z.number(), text: z.string() })).safeParse(brief.evidence.annotations);
     const trace = z.object({
@@ -306,6 +316,8 @@ server.registerTool("poach_read_moment", {
       : [];
     const evidenceText = [
       `Shared recording at ${timeMs} ms. Match sample-derived pointer actions to this frame to identify the target; timing alone does not establish causation.`,
+      imageDimensions(png, brief.evidence.capture),
+      ...(crop ? [`Crop: ${JSON.stringify(crop)} in stored-source pixels.`] : []),
       pointerSummary,
       ...(trace.success && trace.data.truncated ? ["Trace reached its event limit; later actions may be incomplete."] : []),
       ...(notesAtMoment.length ? [`Nearby user notes: ${JSON.stringify(notesAtMoment)}`] : []),

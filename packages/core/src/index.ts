@@ -5,6 +5,8 @@ export { approximateTiming, pixelDifference } from "./motion.js";
 export { extractPalette } from "./palette.js";
 export type {
   ExtractOptions,
+  CaptureInfo,
+  MomentOptions,
   InspectionResult,
   InteractionAnnotation,
   Keyframe,

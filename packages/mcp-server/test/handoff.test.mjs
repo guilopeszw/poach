@@ -100,6 +100,11 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   assert.ok(releaseEvidence.some(text => text.startsWith("Drag release candidate at 1400 ms")));
   assert.ok(releaseEvidence.some(text => text.startsWith("After drag release: 1699 ms")));
   await writeFile(path, JSON.stringify(brief));
+  const cropped = await client.callTool({ name: "poach_read_moment", arguments: { timeMs: 0, crop: { x: 0, y: 0, width: 32, height: 24 }, maxSize: 1280 } });
+  assert.ok(!cropped.isError);
+  assert.ok(cropped.content.some(item => item.type === "text" && item.text.includes("Image 32×24 pixels")));
+  const invalidCrop = await client.callTool({ name: "poach_read_moment", arguments: { timeMs: 0, crop: { x: 0, y: 0, width: 9999, height: 24 } } });
+  assert.ok(invalidCrop.isError);
   const actions = shared.structuredContent.evidence.interactionActions.actions;
   assert.deepEqual(actions.map(action => action.kind), ["click", "drag", "drag", "drag"]);
   assert.equal(shared.structuredContent.evidence.interactionActions.samplingBased, true);

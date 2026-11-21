@@ -95,4 +95,35 @@ test("multi-video recordings retain automatic stream selection and legacy seek p
   const frame = await readVideoMoment(source, 500);
   assert.equal(frame.readUInt32BE(16), 160);
   assert.equal(frame.readUInt32BE(20), 90);
+  assert.equal(result.capture.widthPx, 160);
+  assert.equal(result.capture.heightPx, 90);
+  const detail = await readVideoMoment(source, 500, { crop: { x: 100, y: 5, width: 30, height: 20 } });
+  assert.equal(detail.readUInt32BE(16), 30);
+});
+
+test("moment crops use stored pixels before resizing and reject invalid bounds", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "poach-crop-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = join(directory, "source.mov");
+  await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=12", "-t", "1", "-c:v", "libx264", source]);
+  const result = await inspectVideo(source, { outputDirectory: directory });
+  assert.deepEqual(result.capture, { widthPx: 320, heightPx: 180, deviceScale: null, imageMaxSize: 1280 });
+  const full = await readVideoMoment(source, 0);
+  const crop = { x: 3, y: 5, width: 41, height: 33 };
+  const detail = await readVideoMoment(source, 0, { crop, maxSize: 1280 });
+  assert.equal(detail.readUInt32BE(16), 41);
+  assert.equal(detail.readUInt32BE(20), 33);
+  const expected = join(directory, "expected.png");
+  await exec("ffmpeg", ["-v", "error", "-i", source, "-frames:v", "1", "-vf", "crop=41:33:3:5:exact=1", expected]);
+  const decode = async (png) => (await exec("ffmpeg", ["-v", "error", "-i", png, "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer" })).stdout;
+  const detailFile = join(directory, "detail.png");
+  await writeFile(detailFile, detail);
+  assert.deepEqual(await decode(detailFile), await decode(expected));
+  const reduced = await readVideoMoment(source, 0, { maxSize: 160 });
+  assert.equal(reduced.readUInt32BE(16), 160);
+  assert.equal(full.readUInt32BE(16), 320);
+  await assert.rejects(readVideoMoment(source, 0, { crop: { ...crop, x: -1 } }), /Crop/);
+  await assert.rejects(readVideoMoment(source, 0, { crop: { ...crop, width: 500 } }), /Crop/);
+  await assert.rejects(readVideoMoment(source, 0, { crop: { ...crop, x: 1.5 } }), /Crop/);
+  await assert.rejects(readVideoMoment(source, 0, { maxSize: 8193 }), /maxSize/);
 });

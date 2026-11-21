@@ -236,8 +236,13 @@ struct PoachApp: App {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.screenshotRequiresNewerMacOS }
                 let screenshot = try await makeCaptureService().captureScreenshot(mode: captureMode)
                 hudWindow.showPreparing("Opening screenshot", stages: InspectionStage.stillImage)
-                let result = try await PoachInspectionRunner.inspect(videoURL: screenshot.url) { stage in
+                var result = try await PoachInspectionRunner.inspect(videoURL: screenshot.url) { stage in
                     hudWindow.preparation.advance(to: stage)
+                }
+                if screenshot.sizePoints.width > 0, screenshot.sizePoints.height > 0 {
+                    result.capture?.deviceScale = Double(result.capture?.widthPx ?? 0) / screenshot.sizePoints.width
+                    result.capture?.widthPoints = screenshot.sizePoints.width
+                    result.capture?.heightPoints = screenshot.sizePoints.height
                 }
                 hudWindow.show(
                     result,
@@ -344,6 +349,11 @@ struct PoachApp: App {
                 hudWindow.preparation.advance(to: stage)
             }
             result.pointerTrace = recording.pointerTrace
+            if recording.sizePoints.width > 0, recording.sizePoints.height > 0 {
+                result.capture?.deviceScale = Double(result.capture?.widthPx ?? 0) / recording.sizePoints.width
+                result.capture?.widthPoints = recording.sizePoints.width
+                result.capture?.heightPoints = recording.sizePoints.height
+            }
             Self.captureLog.notice("Recording analysis completed")
             hudWindow.show(result, original: videoURL, captureEpochRange: recording.epochRange)
             Self.captureLog.notice("Review editor presented")

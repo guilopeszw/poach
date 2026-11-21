@@ -54,7 +54,21 @@ export interface InteractionAnnotation {
   readonly text: string;
 }
 
+/** Dimensions of the stored media, not necessarily the original display. */
+export interface CaptureInfo {
+  readonly widthPx: number;
+  readonly heightPx: number;
+  /** Stored pixels per macOS point when known; null for imported media. */
+  readonly deviceScale: number | null;
+  readonly imageMaxSize: number;
+}
+export interface MomentOptions {
+  readonly maxSize?: number;
+  readonly crop?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+}
+
 export interface InspectionResult {
+  readonly capture?: CaptureInfo;
   readonly mediaType: "video" | "image";
   readonly sourcePath: string;
   readonly durationMs: number;

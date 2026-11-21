@@ -227,7 +227,7 @@ enum PoachFavoriteStore {
 
     private static func snapshot(_ inspection: PoachInspection, frames: [PoachKeyframe],
                                  annotations: [InteractionAnnotation]) -> PoachInspection {
-        PoachInspection(mediaType: inspection.mediaType, sourcePath: "", durationMs: inspection.durationMs,
+        PoachInspection(capture: inspection.capture, mediaType: inspection.mediaType, sourcePath: "", durationMs: inspection.durationMs,
                         keyframes: frames, palette: inspection.palette, timing: inspection.timing,
                         pointerTrace: inspection.pointerTrace, annotations: annotations,
                         browserEvidence: inspection.browserEvidence, visualFontMatch: inspection.visualFontMatch)

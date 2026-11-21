@@ -68,12 +68,14 @@ struct ScreenCaptureRecording {
     let url: URL
     let pointerTrace: PointerTrace
     let epochRange: ClosedRange<Int>?
+    let sizePoints: CGSize
 }
 
 @available(macOS 15.0, *)
 @MainActor
 final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContentSharingPickerObserver {
     private static let poachBundleID = Bundle.main.bundleIdentifier ?? "dev.poach.app"
+    private var captureSizePoints = CGSize.zero
     private var stream: SCStream?
     private var outputURL: URL?
     private var pickerContinuation: CheckedContinuation<ContentFilterBox, Error>?
@@ -146,7 +148,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         return SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
     }
 
-    func captureScreenshot(mode: PoachCaptureMode) async throws -> (url: URL, capturedAtEpochMs: Int) {
+    func captureScreenshot(mode: PoachCaptureMode) async throws -> (url: URL, capturedAtEpochMs: Int, sizePoints: CGSize) {
         let (filter, region) = try await selectTarget(mode: mode, screenshot: true)
         NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
         let sourceSize = region?.rect.size ?? filter.contentRect.size
@@ -171,7 +173,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         guard fm.createFile(atPath: url.path, contents: png, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
         }
-        return (url, capturedAtEpochMs)
+        return (url, capturedAtEpochMs, sourceSize)
     }
 
     func startRecording(mode: PoachCaptureMode, beforeCapture: @MainActor () async throws -> Void) async throws {
@@ -183,6 +185,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
 
         let sourceSize = selectedRect?.size ?? filter.contentRect.size
         let scale = CGFloat(filter.pointPixelScale)
+        captureSizePoints = sourceSize
         let dimensionScale = min(1, 1920 / max(sourceSize.width * scale, sourceSize.height * scale))
         // H.264 encoders expect even dimensions, including arbitrary dragged regions.
         let width = max(2, Int(sourceSize.width * scale * dimensionScale) / 2 * 2)
@@ -262,7 +265,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         let epochRange = startedAtEpochMs.flatMap { start in
             start <= stoppedAtEpochMs ? start...stoppedAtEpochMs : nil
         }
-        return ScreenCaptureRecording(url: outputURL, pointerTrace: pointerTrace, epochRange: epochRange)
+        return ScreenCaptureRecording(url: outputURL, pointerTrace: pointerTrace, epochRange: epochRange, sizePoints: captureSizePoints)
     }
 
     private static func pointerCaptureBounds(filter: SCContentFilter, selectedRegion: SelectedRegion?) -> CGRect {

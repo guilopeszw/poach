@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { extractPalette } from "./palette.js";
 import { approximateTiming, pixelDifference } from "./motion.js";
-import type { ExtractOptions, FrameSample, InspectionResult, Keyframe } from "./types.js";
+import type { ExtractOptions, FrameSample, InspectionResult, Keyframe, MomentOptions } from "./types.js";
 
 const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
 const MAX_DURATION_SECONDS = 30;
@@ -250,14 +250,22 @@ function splitPNGs(bytes: Buffer, count: number): Buffer[] {
   return images;
 }
 
-async function referencePNGs(sourcePath: string, seeks: readonly number[], times: readonly number[], maxSize = 1280, streamIndex = 0): Promise<Buffer[]> {
+async function referencePNGs(sourcePath: string, seeks: readonly number[], times: readonly number[], maxSize = 1280, streamIndex = 0, crop?: MomentOptions["crop"]): Promise<Buffer[]> {
   if (!seeks.length) return [];
   const { targets, select } = selectFrames(seeks, times);
   const bytes = await run("ffmpeg", ["-v", "error", "-copyts", "-start_at_zero", "-i", sourcePath, "-map", `0:${streamIndex}`,
-    "-vf", `select='${select}',scale=w='min(${maxSize},iw)':h='min(${maxSize},ih)':force_original_aspect_ratio=decrease`,
+    "-vf", `select='${select}',${crop ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}:exact=1,` : ""}scale=w='min(${maxSize},iw)':h='min(${maxSize},ih)':force_original_aspect_ratio=decrease`,
     "-fps_mode", "passthrough", "-frames:v", String(targets.length), "-f", "image2pipe", "-vcodec", "png", "pipe:1"]);
   const decoded = splitPNGs(bytes, targets.length);
   return seeks.map(seek => decoded[targets.indexOf(times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005)!)]!);
+}
+
+async function mediaSize(sourcePath: string, streamIndex?: number) {
+  const metadata = JSON.parse((await run("ffprobe", ["-v", "error", "-select_streams", streamIndex === undefined ? "v:0" : String(streamIndex), "-show_entries", "stream=width,height:stream_side_data=rotation", "-of", "json", sourcePath])).toString("utf8")) as { streams?: Array<{ width: number; height: number; side_data_list?: Array<{ rotation?: number }> }> };
+  const stream = metadata.streams?.[0];
+  if (!stream?.width || !stream.height) throw new Error("Media has no valid dimensions");
+  const rotated = Math.abs(stream.side_data_list?.find(item => item.rotation !== undefined)?.rotation ?? 0) % 180 === 90;
+  return { widthPx: rotated ? stream.height : stream.width, heightPx: rotated ? stream.width : stream.height };
 }
 
 async function probeMomentSource(videoFile: string) {
@@ -270,13 +278,23 @@ async function probeMomentSource(videoFile: string) {
 }
 
 /** Read a precise visual reference from a bounded local recording. */
-export async function readVideoMoment(videoFile: string, timeMs: number): Promise<Buffer> {
+export async function readVideoMoment(videoFile: string, timeMs: number, options: MomentOptions = {}): Promise<Buffer> {
   if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("Timestamp must be a nonnegative number of milliseconds");
   const { sourcePath, durationMs } = await probeMomentSource(videoFile);
   if (timeMs >= durationMs) throw new Error("Timestamp must be before the end of the recording");
   const timeline = await presentationTimes(sourcePath);
   const times = timeline.seekTimes;
-  return (await referencePNGs(sourcePath, [seekForMoment(times, timeMs / 1000)], timeline.decodeTimes, 1280, timeline.streamIndex))[0]!;
+  const maxSize = options.maxSize ?? 1280;
+  if (!Number.isInteger(maxSize) || maxSize < 16 || maxSize > 8192) throw new Error("maxSize must be an integer from 16 to 8192");
+  const crop = options.crop;
+  if (crop) {
+    const size = await mediaSize(sourcePath, timeline.streamIndex);
+    if (![crop.x, crop.y, crop.width, crop.height].every(Number.isSafeInteger) || crop.x < 0 || crop.y < 0
+        || crop.width < 1 || crop.height < 1 || crop.x + crop.width > size.widthPx || crop.y + crop.height > size.heightPx) {
+      throw new Error("Crop must fit inside the stored frame in pixels");
+    }
+  }
+  return (await referencePNGs(sourcePath, [seekForMoment(times, timeMs / 1000)], timeline.decodeTimes, maxSize, timeline.streamIndex, crop))[0]!;
 }
 
 /** Read a short sequence around a release, ending before the next recorded drag. */
@@ -377,6 +395,7 @@ export async function inspectVideo(videoFile: string, options: ExtractOptions = 
   const palette = extractPalette(paletteFrame, options.paletteSize ?? 6);
 
   return {
+    capture: { ...await mediaSize(sourcePath, timeline.streamIndex), deviceScale: null, imageMaxSize: 1280 },
     mediaType: "video",
     sourcePath,
     durationMs,
@@ -418,6 +437,7 @@ export async function inspectImage(imageFile: string, options: ExtractOptions = 
   options.onProgress?.("palette");
   const palette = extractPalette(frame, options.paletteSize ?? 6);
   return {
+    capture: { ...await mediaSize(sourcePath), deviceScale: null, imageMaxSize: 1280 },
     mediaType: "image",
     sourcePath,
     durationMs: 0,

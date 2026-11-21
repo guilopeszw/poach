@@ -23,7 +23,18 @@ enum PoachImportMedia {
     }
 }
 
+struct PoachCaptureInfo: Codable {
+    let widthPx: Int
+    let heightPx: Int
+    var deviceScale: Double?
+    let imageMaxSize: Int
+    var widthPoints: Double?
+    var heightPoints: Double?
+}
+
 struct PoachInspection: Codable {
+    var capture: PoachCaptureInfo?
+
     let mediaType: String
     let sourcePath: String
     let durationMs: Int
