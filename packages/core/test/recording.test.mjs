@@ -113,12 +113,27 @@ test("moment crops use stored pixels before resizing and reject invalid bounds",
   const detail = await readVideoMoment(source, 0, { crop, maxSize: 1280 });
   assert.equal(detail.readUInt32BE(16), 41);
   assert.equal(detail.readUInt32BE(20), 33);
-  const expected = join(directory, "expected.png");
-  await exec("ffmpeg", ["-v", "error", "-i", source, "-frames:v", "1", "-vf", "crop=41:33:3:5:exact=1", expected]);
   const decode = async (png) => (await exec("ffmpeg", ["-v", "error", "-i", png, "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer" })).stdout;
+  const fullFile = join(directory, "full.png");
   const detailFile = join(directory, "detail.png");
+  await writeFile(fullFile, full);
   await writeFile(detailFile, detail);
-  assert.deepEqual(await decode(detailFile), await decode(expected));
+  const pixels = await decode(fullFile);
+  const expected = Buffer.concat(Array.from({ length: crop.height }, (_, row) => pixels.subarray(
+    ((crop.y + row) * 320 + crop.x) * 3, ((crop.y + row) * 320 + crop.x + crop.width) * 3)));
+  assert.ok((await decode(detailFile)).equals(expected), "a native crop must preserve exactly the requested full-frame RGB pixels");
+  const rotated = join(directory, "rotated.mov");
+  await exec("ffmpeg", ["-v", "error", "-display_rotation:v:0", "90", "-i", source, "-map", "0", "-c", "copy", rotated]);
+  const rotatedResult = await inspectVideo(rotated, { outputDirectory: directory });
+  assert.equal(rotatedResult.capture.widthPx, 180);
+  assert.equal(rotatedResult.capture.heightPx, 320);
+  const rotatedFull = await readVideoMoment(rotated, 0, { maxSize: 8192 });
+  await writeFile(fullFile, rotatedFull);
+  await writeFile(detailFile, await readVideoMoment(rotated, 0, { crop, maxSize: 8192 }));
+  const rotatedPixels = await decode(fullFile);
+  const rotatedExpected = Buffer.concat(Array.from({ length: crop.height }, (_, row) => rotatedPixels.subarray(
+    ((crop.y + row) * 180 + crop.x) * 3, ((crop.y + row) * 180 + crop.x + crop.width) * 3)));
+  assert.ok((await decode(detailFile)).equals(rotatedExpected), "rotated native crop must preserve full-frame RGB pixels");
   const reduced = await readVideoMoment(source, 0, { maxSize: 160 });
   assert.equal(reduced.readUInt32BE(16), 160);
   assert.equal(full.readUInt32BE(16), 320);

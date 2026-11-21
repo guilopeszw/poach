@@ -254,7 +254,7 @@ async function referencePNGs(sourcePath: string, seeks: readonly number[], times
   if (!seeks.length) return [];
   const { targets, select } = selectFrames(seeks, times);
   const bytes = await run("ffmpeg", ["-v", "error", "-copyts", "-start_at_zero", "-i", sourcePath, "-map", `0:${streamIndex}`,
-    "-vf", `select='${select}',${crop ? `crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}:exact=1,` : ""}scale=w='min(${maxSize},iw)':h='min(${maxSize},ih)':force_original_aspect_ratio=decrease`,
+    "-vf", `select='${select}',${crop ? `scale=w=iw:h=ih:force_original_aspect_ratio=decrease,format=rgb24,crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}:exact=1,` : ""}scale=w='min(${maxSize},iw)':h='min(${maxSize},ih)':force_original_aspect_ratio=decrease`,
     "-fps_mode", "passthrough", "-frames:v", String(targets.length), "-f", "image2pipe", "-vcodec", "png", "pipe:1"]);
   const decoded = splitPNGs(bytes, targets.length);
   return seeks.map(seek => decoded[targets.indexOf(times.find(time => time >= Number(seek.toFixed(6)) - 0.0000005)!)]!);
