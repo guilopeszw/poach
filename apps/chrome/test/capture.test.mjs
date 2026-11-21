@@ -97,3 +97,20 @@ test("inspector removes itself when the highlighted target disappears", async ()
     await page.waitForFunction(() => !document.querySelector("[data-poach-inspector]"));
   } finally { await page.close(); }
 });
+
+test("inspector fits viewport edges and stops on pagehide", async () => {
+  const page = await pageWithCapture('<button id="target" style="position:fixed;right:12px;bottom:12px;width:50px;height:30px">Edge</button>');
+  try {
+    await page.setViewportSize({ width: 320, height: 240 });
+    await page.evaluate(() => __poachTest.select());
+    await page.locator("#target").hover();
+    const bounds = await page.locator("[data-poach-inspector]").boundingBox();
+    assert.ok(bounds.x >= 8 && bounds.y >= 8 && bounds.x + bounds.width <= 312 && bounds.y + bounds.height <= 232);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+    assert.equal(await page.locator("[data-poach-inspector]").count(), 0);
+    await page.evaluate(() => __poachTest.select());
+    await page.locator("#target").hover();
+    assert.equal(await page.locator("[data-poach-inspector]").count(), 1);
+    await page.keyboard.press("Escape");
+  } finally { await page.close(); }
+});
