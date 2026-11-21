@@ -209,3 +209,13 @@ The Chrome companion measures visible descendants at pin time (`components`) and
 The bridge remains limited to 256 KiB. If necessary it omits only the optional end snapshot; if the remaining evidence is still too large, sending fails with the existing limit message. MCP includes a short component summary and retains the full lists in the brief without repeating them in moment responses. Older extensions and saved files remain compatible.
 
 Run `pnpm test:chrome` (Playwright; system Chrome on macOS, or `CHROME_BIN` pointing to Chrome elsewhere), `bash scripts/test-browser-evidence.sh`, and the MCP package tests. Check hidden/form content, nested trees, more than 40 children, oversized bridge payloads, and favorite/export/import/share preservation. For Playwright-managed Chromium on Linux, run `pnpm exec playwright install chromium` first.
+
+### Live Chrome inspector
+
+While choosing a component, hover or focus an element to preview its CSS dimensions, font stack, colors and available visual/animation properties. Click or press Enter to pin, use ↑ to inspect a parent, and Escape to cancel. The isolated card stays within the viewport and is removed before capture starts. It refreshes only during selection and stops on pin, cancel, navigation or target removal. Color values and the first CSS font family are measurements, not claims about rendered glyph fonts.
+
+![Chrome inspector on a synthetic local page](docs/media/chrome-inspector.png)
+
+[Watch the synthetic selection demo](docs/media/chrome-inspector.gif). Run `node scripts/record-chrome-inspector.mjs` to regenerate both artifacts locally; it uses Playwright, Chrome and FFmpeg.
+
+Check mouse selection, Tab/focus, ↑ parent, Enter, Escape, viewport edges, transparent colors and target removal with `pnpm test:chrome`. Confirm that inspector elements are absent after pinning and from the evidence handed to MCP.
