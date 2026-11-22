@@ -5,7 +5,7 @@
 
 <p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach’s editor showing a blue and orange Night Shift Radio player, its color palette, the Snatch font button, and a handoff to Codex."></a></p>
 
-**New on main:** faster analysis, detail crops, and the Chrome inspector. See [Unreleased](CHANGELOG.md#unreleased); build from source to try these changes before the next packaged release.
+**New in 1.0.0:** faster analysis, detail crops, and the Chrome inspector. See the [changelog](CHANGELOG.md#100--2026-11-22) or [release notes](https://github.com/guilopeszw/poach/releases/tag/v1.0.0).
 
 ## Poach with taste
 

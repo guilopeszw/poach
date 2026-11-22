@@ -4,6 +4,12 @@ User-visible changes are recorded here. **Unreleased** describes changes on `mai
 
 ## Unreleased
 
+No changes yet.
+
+## 1.0.0 — 2026-11-22
+
+[Release and downloads](https://github.com/guilopeszw/poach/releases/tag/v1.0.0).
+
 ### Added
 
 - Live Chrome inspector with CSS dimensions, typography, colors and animation timing, plus keyboard selection and parent navigation. [#25](https://github.com/guilopeszw/poach/pull/25)
