@@ -60,8 +60,6 @@ enum CapturePillStyle: String, CaseIterable, Identifiable {
     case custom
     /// Each button has its own system glass; `glassEffectUnion` merges them into one capsule.
     case unified
-    /// Separate system glass buttons (`.glass`, `.glassProminent`) that blend in a `GlassEffectContainer`.
-    case split
 
     static let storageKey = "capturePillStyle"
 
@@ -71,7 +69,6 @@ enum CapturePillStyle: String, CaseIterable, Identifiable {
         switch self {
         case .custom: "Custom"
         case .unified: "Unified glass"
-        case .split: "Split glass"
         }
     }
 }
@@ -288,10 +285,10 @@ struct CapturePill: View {
 
 @available(macOS 26.0, *)
 extension CapturePill {
-    /// `.unified` and `.split`: only system glass. The ⏱ button and the timer options share a
+    /// `.unified`: only system glass. The ⏱ button and the timer options share a
     /// `glassEffectID`, so opening the timer morphs the button's glass into the options.
     fileprivate var nativeBody: some View {
-        GlassEffectContainer(spacing: style == .split ? 10 : 6) {
+        GlassEffectContainer(spacing: 6) {
             ZStack {
                 if timerExpanded && isSelecting {
                     nativeOptions
@@ -303,7 +300,7 @@ extension CapturePill {
         .opacity(controlsOpacity)
         .allowsHitTesting(controlsOpacity > 0.5)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        .overlay { if style == .unified { progressEdge } }
+        .overlay { progressEdge }
         .background { shortcuts }
         // Unlike `.custom`, the glass is not forced light: it adapts to what is behind it like
         // the system's controls, and the `.primary` icons follow it.
@@ -311,7 +308,7 @@ extension CapturePill {
     }
 
     private var nativeButtons: some View {
-        HStack(spacing: style == .split ? 6 : 0) {
+        HStack(spacing: 0) {
             nativeButton(id: "timer", enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
                 CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? AnyShapeStyle(.primary) : AnyShapeStyle(Self.activeTint))
@@ -348,66 +345,32 @@ extension CapturePill {
         return screenshot ? PoachPalette.ink : .red
     }
 
-    @ViewBuilder
     private func nativeButton<Label: View>(id: String, enabled: Bool, prominent: Bool, action: @escaping () -> Void,
                                            @ViewBuilder label: () -> Label) -> some View {
-        switch style {
-        case .split:
-            // The system's own glass button for ⏱ and ✕. The pill shows while another app stays
-            // active (⌘⇧P leaves it frontmost), and in an inactive app the system drops the colour of
-            // `.glassProminent` and of `Glass.tint`. So the primary button paints its colour itself.
-            Group {
-                if prominent {
-                    Button(action: action) {
-                        label().foregroundStyle(.white)
-                            .frame(width: 48, height: 32)
-                            .background(prominentTint, in: Capsule())
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(enabled), in: Capsule())
-                } else {
-                    Button(action: action) { label().frame(width: 26, height: 22) }
-                        .buttonStyle(.glass)
-                        .controlSize(.large)
-                        .buttonBorderShape(.capsule)
-                }
-            }
-            .disabled(!enabled)
-            .opacity(enabled ? 1 : Self.dimmed)
-            .glassEffectID(id, in: glassSpace)
-        default:
-            // One cell of the pill; the cells' glass merges into a single capsule.
-            Button(action: action) {
-                label()
-                    .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-                    .frame(width: 44, height: 32)
-                    .background { if prominent { Capsule().fill(prominentTint) } }
-                    .frame(width: CapturePillLayout.size.width / 3, height: CapturePillLayout.size.height)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(!enabled)
-            .opacity(enabled ? 1 : Self.dimmed)
-            .glassEffect(.regular.interactive(enabled), in: Capsule())
-            .glassEffectUnion(id: "pill", namespace: glassSpace)
-            .glassEffectID(id, in: glassSpace)
+        // One cell of the pill; the cells' glass merges into a single capsule.
+        Button(action: action) {
+            label()
+                .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .frame(width: 44, height: 32)
+                .background { if prominent { Capsule().fill(prominentTint) } }
+                .frame(width: CapturePillLayout.size.width / 3, height: CapturePillLayout.size.height)
+                .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : Self.dimmed)
+        .glassEffect(.regular.interactive(enabled), in: Capsule())
+        .glassEffectUnion(id: "pill", namespace: glassSpace)
+        .glassEffectID(id, in: glassSpace)
     }
 
-    /// Off · 3s · 10s as the system segmented control on the pill's glass.
+    /// Off · 3s · 10s with the same lens picker as `.custom`, on the pill's glass.
     private var nativeOptions: some View {
-        Picker("Timer", selection: Binding(get: { timer }, set: { choice in
-            storedSeconds = choice.rawValue
-            // Let the selection land before the options fold back into ⏱.
-            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0 : 0.22)) { timerExpanded = false }
-        })) {
-            ForEach(PoachCaptureTimer.allCases) { Text($0.shortTitle).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.large)
-        .padding(.horizontal, 10)
+        CaptureTimerLensPicker(
+            selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
+            onCommit: { timerExpanded = false }
+        )
+        .padding(.horizontal, 8)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
         .glassEffect(.regular, in: Capsule())
         .glassEffectID("timer", in: glassSpace)
@@ -418,7 +381,6 @@ extension CapturePill {
         .onKeyPress(.rightArrow) { storedSeconds = timer.stepped(by: 1).rawValue; return .handled }
         .onKeyPress(.return) { timerExpanded = false; return .handled }
         .onAppear { optionsFocused = true }
-        .accessibilityHint("Choose a delay; the options close after a choice")
     }
 }
 
@@ -761,7 +723,10 @@ private struct CaptureTimerLensPicker: View {
         if #available(macOS 26.0, *) { true } else { false }
     }
 
-    private static let restingHeight: CGFloat = 32
+    /// The resting lens is taller than the track, so it stands out of it (Poach brief, Nov 26).
+    private static let restingHeight: CGFloat = 42
+    private static let restingExtraWidth: CGFloat = 12
+    private static let trackHeight: CGFloat = 30
     /// The lifted lens is taller than the 48 pt pill so it overlaps the pill's edges.
     private static let liftedHeight: CGFloat = 64
     private static let liftedExtraWidth: CGFloat = 22
@@ -772,7 +737,7 @@ private struct CaptureTimerLensPicker: View {
             let count = CGFloat(PoachCaptureTimer.allCases.count)
             let segment = width / count
             let lifted = dragX != nil
-            let lensWidth = segment + (lifted ? Self.liftedExtraWidth : 0)
+            let lensWidth = segment + (lifted ? Self.liftedExtraWidth : Self.restingExtraWidth)
             // While pressed the lens follows the pointer; at rest it centres on the choice.
             // At the ends the lens may overhang the pill, as a lifted glass lens does.
             let centre = dragX.map { min(max($0, segment / 2), width - segment / 2) }
@@ -784,6 +749,12 @@ private struct CaptureTimerLensPicker: View {
             let anchor = UnitPoint(x: centre / max(width, 1), y: 0.5)
 
             ZStack(alignment: .topLeading) {
+                // A recessed track under the options; the lens rises out of it.
+                Capsule()
+                    .fill(Color.black.opacity(0.07))
+                    .frame(width: width, height: Self.trackHeight)
+                    .position(x: width / 2, y: geometry.size.height / 2)
+
                 if !lifted || !Self.hasLiquidGlass {
                     lens(lifted: lifted)
                         .frame(width: lensWidth, height: lensHeight)
@@ -874,6 +845,17 @@ private struct CaptureTimerLensPicker: View {
         .frame(height: height)
     }
 
+    /// Clear Liquid Glass on macOS 26; a faint white wash earlier.
+    @ViewBuilder private var restingLensFill: some View {
+        if #available(macOS 26.0, *) {
+            Color.clear
+                .glassEffect(.clear, in: Capsule())
+                .environment(\.colorScheme, .light)
+        } else {
+            Capsule().fill(Color.white.opacity(0.35))
+        }
+    }
+
     /// The lifted lens's bright rim, drawn over the refracted labels.
     private var lensRim: some View {
         Capsule()
@@ -899,10 +881,22 @@ private struct CaptureTimerLensPicker: View {
                 }
                 .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
         } else {
-            Capsule()
-                .fill(Color.white.opacity(0.9))
-                .overlay { Capsule().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5) }
-                .shadow(color: .black.opacity(0.06), radius: 1.5, x: 0, y: 0.5)
+            // Resting: an almost clear lens with a thin rim that catches the light at the top-left
+            // and bottom-right corners, and a hairline so it still reads on the light pill.
+            restingLensFill
+                .overlay {
+                    Capsule().strokeBorder(
+                        LinearGradient(stops: [
+                            .init(color: .white, location: 0),
+                            .init(color: .white.opacity(0.25), location: 0.35),
+                            .init(color: .white.opacity(0.25), location: 0.65),
+                            .init(color: .white.opacity(0.9), location: 1)
+                        ], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 1.5
+                    )
+                }
+                .overlay { Capsule().strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 1.5)
         }
     }
 }
