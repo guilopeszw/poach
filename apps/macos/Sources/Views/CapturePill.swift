@@ -648,7 +648,8 @@ private enum CapturePillTimerButton {
     }
 }
 
-/// ⏱ when the timer is off; with 3s or 10s chosen, the seconds sit inside a stopwatch outline.
+/// ⏱ when the timer is off. With 3s or 10s chosen, the same open circle without the hand, and the
+/// seconds inside it (reference the user shared on Nov 26).
 private struct CaptureTimerGlyph: View {
     let timer: PoachCaptureTimer
 
@@ -658,19 +659,17 @@ private struct CaptureTimerGlyph: View {
                 .font(.system(size: 15, weight: .semibold))
         } else {
             ZStack {
+                // Open at the top, between 12 and 1 o'clock, like the `timer` symbol.
                 Circle()
-                    .strokeBorder(lineWidth: 1.6)
-                    .frame(width: 18, height: 18)
-                Capsule()
-                    .frame(width: 5, height: 2.2)
-                    .offset(y: -10.4)
-                // Same face as the Off · 3s · 10s options.
+                    .trim(from: 0, to: 0.9)
+                    .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                    .rotationEffect(.degrees(-54))
+                    .frame(width: 17, height: 17)
                 Text("\(timer.seconds)")
-                    .font(.system(size: timer.seconds >= 10 ? 8.5 : 10, weight: .bold))
+                    .font(.system(size: timer.seconds >= 10 ? 8 : 9.5, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
             }
-            .frame(width: 20, height: 22)
-            // Centre the whole stopwatch, crown included, in the button.
-            .offset(y: 1)
+            .frame(width: 20, height: 20)
             .accessibilityHidden(true)
         }
     }
