@@ -803,20 +803,12 @@ private struct CaptureTimerLensPicker: View {
             .fixedSize()
     }
 
-    /// A thin rim that catches the light at the top-left and bottom-right. On the light pill a
-    /// grey edge outside the white rim defines it. Drawn again over the refracted labels.
+    /// The lens's edge, after the "crystal" glass in the user's Figma reference (Community-X): a
+    /// solid white border. On the light pill a grey hairline outside it keeps the lens visible.
     @ViewBuilder private var lensRim: some View {
         let dark = colorScheme == .dark
         ZStack {
-            Capsule().strokeBorder(
-                LinearGradient(stops: [
-                    .init(color: .white.opacity(dark ? 0.8 : 1), location: 0),
-                    .init(color: .white.opacity(dark ? 0.28 : 0.5), location: 0.4),
-                    .init(color: .white.opacity(dark ? 0.28 : 0.5), location: 0.6),
-                    .init(color: .white.opacity(dark ? 0.7 : 1), location: 1)
-                ], startPoint: .topLeading, endPoint: .bottomTrailing),
-                lineWidth: 1.5
-            )
+            Capsule().strokeBorder(Color.white.opacity(dark ? 0.85 : 1), lineWidth: 1.25)
             if !dark {
                 Capsule().strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5)
                     .padding(-0.5)
@@ -824,12 +816,19 @@ private struct CaptureTimerLensPicker: View {
         }
     }
 
-    /// A clear capsule, only its rim, so the track and the labels show through it. Lifted, it
-    /// also casts a soft shadow, as glass held above the pill.
+    /// The "crystal" glass scaled from the reference's 320 px button to the lens (about 1/5): a 6 %
+    /// white fill lit from inside, a bright glow along the bottom and a crisp one under the top
+    /// edge, and, lifted, its two-layer drop shadow. The reference's refraction is left out: a drawn
+    /// one pushed the neighbouring labels out of the lens.
     private func lens(lifted: Bool) -> some View {
         Capsule()
-            .fill(Color.primary.opacity(0.03))
+            .fill(
+                Color.white.opacity(0.06)
+                    .shadow(.inner(color: .white.opacity(0.6), radius: 2, x: 0, y: -1.2))
+                    .shadow(.inner(color: .white.opacity(0.9), radius: 1, x: 0, y: 0.6))
+            )
             .overlay { lensRim }
-            .shadow(color: .black.opacity(lifted ? 0.14 : 0), radius: 8, x: 0, y: 3)
+            .shadow(color: .black.opacity(lifted ? 0.12 : 0), radius: 1.4, x: 0, y: 1.6)
+            .shadow(color: .black.opacity(lifted ? 0.18 : 0), radius: 7, x: 0, y: 8)
     }
 }
