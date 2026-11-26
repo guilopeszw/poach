@@ -53,6 +53,29 @@ enum CapturePillLayout {
     }
 }
 
+/// How the pill builds its glass on macOS 26. Earlier systems always draw `.custom`.
+/// Stored under `storageKey`; the design lab switches it to compare the variants.
+enum CapturePillStyle: String, CaseIterable, Identifiable {
+    /// One system glass capsule behind hand-drawn buttons and the custom timer lens.
+    case custom
+    /// Each button has its own system glass; `glassEffectUnion` merges them into one capsule.
+    case unified
+    /// Separate system glass buttons (`.glass`, `.glassProminent`) that blend in a `GlassEffectContainer`.
+    case split
+
+    static let storageKey = "capturePillStyle"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .custom: "Custom"
+        case .unified: "Unified glass"
+        case .split: "Split glass"
+        }
+    }
+}
+
 /// The floating capture pill: ⏱ · ● · ✕ (⏱ · 📷 · ✕ for screenshots).
 /// Clicking ⏱ expands the timer options over the whole pill; choosing one collapses it.
 struct CapturePill: View {
@@ -65,8 +88,10 @@ struct CapturePill: View {
     var controlsOpacity: Double = 1
 
     @AppStorage(PoachCaptureTimer.storageKey) private var storedSeconds = PoachCaptureTimer.off.rawValue
+    @AppStorage(CapturePillStyle.storageKey) private var storedStyle = CapturePillStyle.custom.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var optionsFocused: Bool
+    @Namespace private var glassSpace
 
     private static let activeTint = Color(red: 0.77, green: 0.42, blue: 0)
     private static let activeFill = Color(red: 0.99, green: 0.90, blue: 0.78)
@@ -83,8 +108,17 @@ struct CapturePill: View {
         }
     }
     private var cancelEnabled: Bool { !isRecording }
+    private var style: CapturePillStyle { CapturePillStyle(rawValue: storedStyle) ?? .custom }
 
     var body: some View {
+        if #available(macOS 26.0, *), style != .custom {
+            nativeBody
+        } else {
+            customBody
+        }
+    }
+
+    private var customBody: some View {
         ZStack {
             if timerExpanded && isSelecting {
                 options
@@ -247,6 +281,144 @@ struct CapturePill: View {
 
     private func clock(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+// MARK: - System glass variants (macOS 26)
+
+@available(macOS 26.0, *)
+extension CapturePill {
+    /// `.unified` and `.split`: only system glass. The ⏱ button and the timer options share a
+    /// `glassEffectID`, so opening the timer morphs the button's glass into the options.
+    fileprivate var nativeBody: some View {
+        GlassEffectContainer(spacing: style == .split ? 10 : 6) {
+            ZStack {
+                if timerExpanded && isSelecting {
+                    nativeOptions
+                } else {
+                    nativeButtons
+                }
+            }
+        }
+        .opacity(controlsOpacity)
+        .allowsHitTesting(controlsOpacity > 0.5)
+        .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
+        .overlay { if style == .unified { progressEdge } }
+        .background { shortcuts }
+        // Unlike `.custom`, the glass is not forced light: it adapts to what is behind it like
+        // the system's controls, and the `.primary` icons follow it.
+        .animation(reduceMotion ? nil : .bouncy(duration: 0.38), value: timerExpanded)
+    }
+
+    private var nativeButtons: some View {
+        HStack(spacing: style == .split ? 6 : 0) {
+            nativeButton(id: "timer", enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
+                CaptureTimerGlyph(timer: timer)
+                    .foregroundStyle(timer == .off ? AnyShapeStyle(.primary) : AnyShapeStyle(Self.activeTint))
+            }
+            .accessibilityLabel("Timer")
+            .accessibilityValue(timer.spokenTitle)
+            .accessibilityHint("Shows timer options")
+            .help("Capture timer: \(timer.spokenTitle) (T)")
+
+            nativeButton(id: "primary", enabled: primaryEnabled, prominent: true, action: onPrimary) {
+                Image(systemName: primarySymbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .accessibilityLabel(primaryLabel)
+            .accessibilityValue(recordingValue ?? "")
+            .help(primaryHelp)
+            .keyboardShortcut(.defaultAction)
+
+            nativeButton(id: "cancel", enabled: cancelEnabled, prominent: false, action: onCancel) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .keyboardShortcut(cancelEnabled ? .cancelAction : nil)
+            .accessibilityLabel(phase == .countdown ? "Cancel countdown" : "Cancel selection")
+            .help(phase == .countdown ? "Cancel countdown (Esc)" : "Cancel (Esc)")
+        }
+    }
+
+    /// The tint of the prominent button: red to record or stop, ink for screenshots.
+    private var prominentTint: Color {
+        if isRecording { return .red }
+        return screenshot ? PoachPalette.ink : .red
+    }
+
+    @ViewBuilder
+    private func nativeButton<Label: View>(id: String, enabled: Bool, prominent: Bool, action: @escaping () -> Void,
+                                           @ViewBuilder label: () -> Label) -> some View {
+        switch style {
+        case .split:
+            // The system's own glass button for ⏱ and ✕. The pill shows while another app stays
+            // active (⌘⇧P leaves it frontmost), and in an inactive app the system drops the colour of
+            // `.glassProminent` and of `Glass.tint`. So the primary button paints its colour itself.
+            Group {
+                if prominent {
+                    Button(action: action) {
+                        label().foregroundStyle(.white)
+                            .frame(width: 48, height: 32)
+                            .background(prominentTint, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(enabled), in: Capsule())
+                } else {
+                    Button(action: action) { label().frame(width: 26, height: 22) }
+                        .buttonStyle(.glass)
+                        .controlSize(.large)
+                        .buttonBorderShape(.capsule)
+                }
+            }
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : Self.dimmed)
+            .glassEffectID(id, in: glassSpace)
+        default:
+            // One cell of the pill; the cells' glass merges into a single capsule.
+            Button(action: action) {
+                label()
+                    .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                    .frame(width: 44, height: 32)
+                    .background { if prominent { Capsule().fill(prominentTint) } }
+                    .frame(width: CapturePillLayout.size.width / 3, height: CapturePillLayout.size.height)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : Self.dimmed)
+            .glassEffect(.regular.interactive(enabled), in: Capsule())
+            .glassEffectUnion(id: "pill", namespace: glassSpace)
+            .glassEffectID(id, in: glassSpace)
+        }
+    }
+
+    /// Off · 3s · 10s as the system segmented control on the pill's glass.
+    private var nativeOptions: some View {
+        Picker("Timer", selection: Binding(get: { timer }, set: { choice in
+            storedSeconds = choice.rawValue
+            // Let the selection land before the options fold back into ⏱.
+            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0 : 0.22)) { timerExpanded = false }
+        })) {
+            ForEach(PoachCaptureTimer.allCases) { Text($0.shortTitle).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.large)
+        .padding(.horizontal, 10)
+        .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
+        .glassEffect(.regular, in: Capsule())
+        .glassEffectID("timer", in: glassSpace)
+        .focusable()
+        .focused($optionsFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) { storedSeconds = timer.stepped(by: -1).rawValue; return .handled }
+        .onKeyPress(.rightArrow) { storedSeconds = timer.stepped(by: 1).rawValue; return .handled }
+        .onKeyPress(.return) { timerExpanded = false; return .handled }
+        .onAppear { optionsFocused = true }
+        .accessibilityHint("Choose a delay; the options close after a choice")
     }
 }
 

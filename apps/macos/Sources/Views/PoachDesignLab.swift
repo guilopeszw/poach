@@ -63,6 +63,7 @@ struct PoachDesignLab: View {
     @StateObject private var status = InspectionStatus()
     @State private var pillTimerExpanded = false
     @State private var pillTimerOpen = true
+    @AppStorage(CapturePillStyle.storageKey) private var pillStyle = CapturePillStyle.custom.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,6 +73,11 @@ struct PoachDesignLab: View {
                 Picker("Surface", selection: $surface) {
                     ForEach(Surface.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented)
+                if surface == .pill {
+                    Picker("Pill glass", selection: $pillStyle) {
+                        ForEach(CapturePillStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                    }.pickerStyle(.segmented)
+                }
                 Picker("Fixture", selection: $dataset) {
                     ForEach(Dataset.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented)
@@ -86,6 +92,10 @@ struct PoachDesignLab: View {
             .background(PoachPalette.panel)
         }
         .preferredColorScheme(.light)
+        .onAppear {
+            // Launched from a shell, the lab would otherwise stay inactive and show inactive-window colours.
+            NSApp.activate()
+        }
         .onAppear {
             status.begin("Reading recording…")
             status.finish()
