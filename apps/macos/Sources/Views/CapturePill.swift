@@ -14,8 +14,6 @@ enum CapturePillPhase: Equatable {
 /// Layout shared by every window that shows the pill, so it never jumps between phases.
 enum CapturePillLayout {
     static let size = CGSize(width: 168, height: 48)
-    /// With the timer options open, the pill's glass slims to this track and the lens stands out of it.
-    static let optionsTrackHeight: CGFloat = 36
     static let bottomInset: CGFloat = 26
     /// Room around the pill in its own panels, so the timer lens and the shadow are not clipped.
     static let panelMargin: CGFloat = 16
@@ -135,10 +133,7 @@ struct CapturePill: View {
         .opacity(controlsOpacity)
         .allowsHitTesting(controlsOpacity > 0.5)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        .background {
-            CapturePillGlass()
-                .frame(height: timerExpanded && isSelecting ? CapturePillLayout.optionsTrackHeight : CapturePillLayout.size.height)
-        }
+        .background { CapturePillGlass() }
         .overlay { progressEdge }
         .background { shortcuts }
         .animation(reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.1), value: timerExpanded)
@@ -379,9 +374,9 @@ extension CapturePill {
         )
         .padding(.horizontal, 8)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        // The pill slims to a track and the lens stands out of it. The glass is applied to the
-        // options themselves: as a background inside the container it was drawn over them.
-        .glassEffect(.regular, in: CenteredCapsule(height: CapturePillLayout.optionsTrackHeight))
+        // Applied to the options themselves: as a background inside the container the glass was
+        // drawn over them.
+        .glassEffect(.regular, in: Capsule())
         .glassEffectID("timer", in: glassSpace)
         .focusable()
         .focused($optionsFocused)
@@ -390,16 +385,6 @@ extension CapturePill {
         .onKeyPress(.rightArrow) { storedSeconds = timer.stepped(by: 1).rawValue; return .handled }
         .onKeyPress(.return) { timerExpanded = false; return .handled }
         .onAppear { optionsFocused = true }
-    }
-}
-
-/// A capsule of fixed `height`, vertically centred in the rect it is given.
-struct CenteredCapsule: Shape {
-    let height: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let h = min(height, rect.height)
-        return Capsule().path(in: CGRect(x: rect.minX, y: rect.midY - h / 2, width: rect.width, height: h))
     }
 }
 
@@ -478,8 +463,16 @@ struct CapturePillDropIn<Pill: View>: View {
                 let height = max(4, rise <= 0 ? squash : squash + (frame.height - squash) * rise)
                 let g = min(max(x / 0.6, 0), 1)
                 let controls = min(max((t - growStart - Self.grow * 0.55) / Self.fade, 0), 1)
+                // Once landed the pill is unmasked, so the pressed timer lens can stand out of it.
+                let landed = x >= 1
                 pill(controls)
-                    .mask { Capsule().frame(width: width, height: height) }
+                    .mask {
+                        if landed {
+                            Rectangle().padding(-CapturePillLayout.panelMargin)
+                        } else {
+                            Capsule().frame(width: width, height: height)
+                        }
+                    }
                     .position(x: frame.midX, y: frame.midY)
                 Capsule()
                     .fill(Color.white.opacity(Double(max(0, 1 - g * 1.3))))
@@ -628,7 +621,17 @@ private struct CapturePillBlendingKey: EnvironmentKey {
     static let defaultValue = NSVisualEffectView.BlendingMode.behindWindow
 }
 
+private struct TimerLensPreviewKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
 extension EnvironmentValues {
+    /// Design lab only: holds the timer lens as if pressed at this x, to inspect the lifted lens.
+    var timerLensPreviewX: CGFloat? {
+        get { self[TimerLensPreviewKey.self] }
+        set { self[TimerLensPreviewKey.self] = newValue }
+    }
+
     /// `.behindWindow` for the pill's own panels and overlays; `.withinWindow` inside a regular window.
     var capturePillBlending: NSVisualEffectView.BlendingMode {
         get { self[CapturePillBlendingKey.self] }
@@ -707,29 +710,11 @@ extension TimerOptionsCollapse: ViewModifier {
     }
 }
 
-/// The timer options as a glass segmented control (Poach brief `FDBFE307…`): the chosen option
-/// sits on a soft white thumb; while pressed, the thumb lifts into a larger, almost clear lens
-/// that follows the pointer (and overflows the pill), and the option under it becomes the choice
-/// at once. On release the lens settles back into the thumb with a spring. On macOS 26 the
-/// lifted lens is clear Liquid Glass under the labels; earlier systems fake the refraction.
-/// A mask that keeps either the inside of a capsule-shaped lens or everything outside it.
-private struct LensCutout: View {
-    let lens: CGRect
-    let inside: Bool
-
-    var body: some View {
-        Canvas { context, size in
-            var path = Path(roundedRect: lens, cornerRadius: lens.height / 2, style: .continuous)
-            if inside {
-                context.fill(path, with: .color(.black))
-            } else {
-                path.addRect(CGRect(origin: .zero, size: size))
-                context.fill(path, with: .color(.black), style: FillStyle(eoFill: true))
-            }
-        }
-    }
-}
-
+/// The timer options as a segmented control with a clear lens (Poach brief `FDBFE307…`, and a
+/// reference the user shared on Nov 26). At rest the chosen option sits under a pill inside the
+/// pill; while pressed the lens grows into a wider capsule that stands out of the pill and follows
+/// the pointer, and the option under it becomes the choice at once. On release it settles back
+/// with a spring. The lens is only a bright rim, so the labels show through it unchanged.
 private struct CaptureTimerLensPicker: View {
     @Binding var selection: PoachCaptureTimer
     let onCommit: () -> Void
@@ -738,19 +723,18 @@ private struct CaptureTimerLensPicker: View {
     /// `.custom` forces light; `.unified` follows the system, so the track, labels and rim adapt.
     @Environment(\.colorScheme) private var colorScheme
     /// Pointer x while pressed; `nil` when the lens rests on `selection`.
-    @State private var dragX: CGFloat?
+    @State private var pressedX: CGFloat?
+    @Environment(\.timerLensPreviewX) private var previewX
+    private var dragX: CGFloat? { pressedX ?? previewX }
 
-    private static var hasLiquidGlass: Bool {
-        if #available(macOS 26.0, *) { true } else { false }
-    }
 
-    /// The resting lens is a capsule taller than the pill's slim track and wider than one option,
-    /// so it stands out of the pill above, below and past the ends (reference shared on Nov 26).
-    private static let restingHeight: CGFloat = 52
-    private static let restingWidthRatio: CGFloat = 1.65
+    /// At rest the lens is a pill inside the 48 pt pill; pressed, it grows into a wider capsule
+    /// that stands out of the pill above and below (reference shared on Nov 26).
+    private static let restingHeight: CGFloat = 36
+    private static let restingExtraWidth: CGFloat = 8
+    private static let liftedWidthRatio: CGFloat = 2
     /// The lifted lens is taller than the 48 pt pill so it overlaps the pill's edges.
-    private static let liftedHeight: CGFloat = 64
-    private static let liftedExtraWidth: CGFloat = 12
+    private static let liftedHeight: CGFloat = 58
 
     var body: some View {
         GeometryReader { geometry in
@@ -758,58 +742,25 @@ private struct CaptureTimerLensPicker: View {
             let count = CGFloat(PoachCaptureTimer.allCases.count)
             let segment = width / count
             let lifted = dragX != nil
-            let lensWidth = segment * Self.restingWidthRatio + (lifted ? Self.liftedExtraWidth : 0)
+            let lensWidth = lifted ? segment * Self.liftedWidthRatio : segment + Self.restingExtraWidth
             // While pressed the lens follows the pointer; at rest it centres on the choice.
             // At the ends the lens may overhang the pill, as a lifted glass lens does.
             let centre = dragX.map { min(max($0, segment / 2), width - segment / 2) }
                 ?? segment * (CGFloat(selection.index) + 0.5)
 
             let lensHeight = lifted ? Self.liftedHeight : Self.restingHeight
-            let lensFrame = CGRect(x: centre - lensWidth / 2, y: (geometry.size.height - lensHeight) / 2,
-                                   width: lensWidth, height: lensHeight)
-            let anchor = UnitPoint(x: centre / max(width, 1), y: 0.5)
 
             ZStack(alignment: .topLeading) {
-                if !lifted || !Self.hasLiquidGlass {
-                    lens(lifted: lifted)
-                        .frame(width: lensWidth, height: lensHeight)
-                        .position(x: centre, y: geometry.size.height / 2)
-                }
+                // The lens draws its refraction on every system. A clear Liquid Glass lens was tried on
+                // macOS 26 and dropped: over dark backgrounds it became an opaque grey patch.
+                lens(lifted: lifted)
+                    .frame(width: lensWidth, height: lensHeight)
+                    .position(x: centre, y: geometry.size.height / 2)
 
-                if lifted, #available(macOS 26.0, *) {
-                    // A clear Liquid Glass lens refracts the pill and what is behind it; the labels
-                    // stay crisp on top, as in the system's own glass controls.
-                    Color.clear
-                        .glassEffect(.clear, in: Capsule())
-                        .environment(\.colorScheme, .light)
-                        .overlay { lensRim }
-                        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
-                        .frame(width: lensWidth, height: lensHeight)
-                        .position(x: centre, y: geometry.size.height / 2)
-                    labels(segment: segment, height: geometry.size.height)
-                } else if lifted && !reduceMotion {
-                    // Refraction (macOS 14 and 15): outside the lens the labels are untouched; inside they are
-                    // magnified, and along the rim they bend harder, as through a drop of glass.
-                    labels(segment: segment, height: geometry.size.height)
-                        .mask { LensCutout(lens: lensFrame, inside: false) }
-                    labels(segment: segment, height: geometry.size.height)
-                        .scaleEffect(1.22, anchor: anchor)
-                        .mask { LensCutout(lens: lensFrame.insetBy(dx: 6, dy: 6), inside: true) }
-                    labels(segment: segment, height: geometry.size.height)
-                        .scaleEffect(1.6, anchor: anchor)
-                        .blur(radius: 0.7)
-                        .mask {
-                            Capsule()
-                                .strokeBorder(lineWidth: 6)
-                                .frame(width: lensFrame.width, height: lensFrame.height)
-                                .position(x: lensFrame.midX, y: lensFrame.midY)
-                        }
-                    lensRim
-                        .frame(width: lensWidth, height: lensHeight)
-                        .position(x: centre, y: geometry.size.height / 2)
-                } else {
-                    labels(segment: segment, height: geometry.size.height)
-                }
+                // The labels show through the clear lens unchanged, neighbours included, as in the
+                // reference. A drawn refraction (magnified labels inside the lens) was dropped: over
+                // the wide lifted lens it pushed the neighbouring labels out and left fragments.
+                labels(segment: segment, height: geometry.size.height)
             }
             .allowsHitTesting(false)
             .contentShape(Rectangle())
@@ -819,7 +770,7 @@ private struct CaptureTimerLensPicker: View {
                         let x = value.location.x
                         let option = PoachCaptureTimer.option(atX: Double(x), trackWidth: Double(width))
                         withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
-                            dragX = x
+                            pressedX = x
                             selection = option
                         }
                     }
@@ -827,7 +778,7 @@ private struct CaptureTimerLensPicker: View {
                         let option = PoachCaptureTimer.option(atX: Double(value.location.x), trackWidth: Double(width))
                         withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.68)) {
                             selection = option
-                            dragX = nil
+                            pressedX = nil
                         }
                         // Let the lens settle before the pill folds back.
                         DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0 : 0.32)) { onCommit() }
@@ -860,55 +811,33 @@ private struct CaptureTimerLensPicker: View {
         .frame(height: height)
     }
 
-    /// The lifted lens's bright rim, drawn over the refracted labels.
-    private var lensRim: some View {
-        Capsule()
-            .strokeBorder(
-                LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.3), .black.opacity(0.1)],
-                               startPoint: .top, endPoint: .bottom),
-                lineWidth: 1.2
+    /// A thin rim that catches the light at the top-left and bottom-right. On the light pill a
+    /// grey edge outside the white rim defines it. Drawn again over the refracted labels.
+    @ViewBuilder private var lensRim: some View {
+        let dark = colorScheme == .dark
+        ZStack {
+            Capsule().strokeBorder(
+                LinearGradient(stops: [
+                    .init(color: .white.opacity(dark ? 0.8 : 1), location: 0),
+                    .init(color: .white.opacity(dark ? 0.28 : 0.5), location: 0.4),
+                    .init(color: .white.opacity(dark ? 0.28 : 0.5), location: 0.6),
+                    .init(color: .white.opacity(dark ? 0.7 : 1), location: 1)
+                ], startPoint: .topLeading, endPoint: .bottomTrailing),
+                lineWidth: 1.5
             )
+            if !dark {
+                Capsule().strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5)
+                    .padding(-0.5)
+            }
+        }
     }
 
-    /// Resting: a soft white thumb with a hairline edge. Lifted: an almost clear lens with a
-    /// bright rim that fades downward and a soft shadow, so the labels show through it.
-    @ViewBuilder private func lens(lifted: Bool) -> some View {
-        if lifted {
-            Capsule()
-                .fill(Color.white.opacity(0.18))
-                .overlay {
-                    Capsule().strokeBorder(
-                        LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.35), .black.opacity(0.12)],
-                                       startPoint: .top, endPoint: .bottom),
-                        lineWidth: 1.2
-                    )
-                }
-                .shadow(color: .black.opacity(0.14), radius: 10, x: 0, y: 4)
-        } else {
-            // Resting: a clear lens, only a thin rim that catches the light at the top-left and
-            // bottom-right, so the track and the neighbouring labels show through it. No glass
-            // fill: Liquid Glass turned it into an opaque grey patch over dark backgrounds.
-            let dark = colorScheme == .dark
-            Capsule()
-                .fill(Color.primary.opacity(0.03))
-                .overlay {
-                    Capsule().strokeBorder(
-                        LinearGradient(stops: [
-                            .init(color: .white.opacity(dark ? 0.8 : 1), location: 0),
-                            .init(color: .white.opacity(dark ? 0.28 : 0.5), location: 0.4),
-                            .init(color: .white.opacity(dark ? 0.28 : 0.5), location: 0.6),
-                            .init(color: .white.opacity(dark ? 0.7 : 1), location: 1)
-                        ], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        lineWidth: 1.5
-                    )
-                }
-                // On the light pill a white rim alone disappears; a grey edge outside it defines the lens.
-                .overlay {
-                    if !dark {
-                        Capsule().strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5)
-                            .padding(-0.5)
-                    }
-                }
-        }
+    /// A clear capsule, only its rim, so the track and the labels show through it. Lifted, it
+    /// also casts a soft shadow, as glass held above the pill.
+    private func lens(lifted: Bool) -> some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.03))
+            .overlay { lensRim }
+            .shadow(color: .black.opacity(lifted ? 0.14 : 0), radius: 8, x: 0, y: 3)
     }
 }
