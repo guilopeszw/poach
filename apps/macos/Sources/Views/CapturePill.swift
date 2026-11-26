@@ -404,6 +404,7 @@ extension CapturePill {
         CaptureTimerLensPicker(
             selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
             whiteLabels: true,
+            unifiedGlass: true,
             onCommit: { timerExpanded = false }
         )
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
@@ -755,6 +756,29 @@ extension TimerOptionsCollapse: ViewModifier {
     }
 }
 
+/// The part of the lens outside the pill (both capsules), where the refracted pill shows.
+private struct LensOverhang: Shape {
+    let lens: CGRect
+    let pill: CGRect
+
+    func path(in rect: CGRect) -> Path {
+        Capsule().path(in: lens).subtracting(Capsule().path(in: pill))
+    }
+}
+
+/// A copy of the pill's glass for the refraction under the lifted lens.
+private struct RefractedPillGlass: View {
+    let unified: Bool
+
+    var body: some View {
+        if unified, #available(macOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: Capsule())
+        } else {
+            CapturePillGlass()
+        }
+    }
+}
+
 /// The timer options as a segmented control with a clear lens (Poach brief `FDBFE307…`, and a
 /// reference the user shared on Nov 26). At rest the chosen option sits under a pill inside the
 /// pill; while pressed the lens grows into a wider capsule that stands out of the pill and follows
@@ -764,6 +788,9 @@ private struct CaptureTimerLensPicker: View {
     @Binding var selection: PoachCaptureTimer
     /// White labels, like the unified pill's icons; dark ones on the custom pill's light glass.
     var whiteLabels = false
+    /// The pill's own glass, refracted under the lifted lens: the system glass of the unified pill
+    /// (which follows the colour scheme), or `CapturePillGlass` for the custom one.
+    var unifiedGlass = false
     let onCommit: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -807,13 +834,16 @@ private struct CaptureTimerLensPicker: View {
                     // lens's centre and seen only through the lens, so it bends outward the way the
                     // track does in the user's reference. The labels above are left unrefracted.
                     let anchor = UnitPoint(x: centre / max(geometry.size.width, 1), y: 0.5)
+                    let pillRect = CGRect(origin: .zero, size: geometry.size)
+                    let lensRect = CGRect(x: centre - CGFloat(size.width) / 2, y: (geometry.size.height - CGFloat(size.height)) / 2,
+                                          width: CGFloat(size.width), height: CGFloat(size.height))
                     ZStack {
-                        Capsule()
-                            .fill(Color.primary.opacity(0.1))
+                        // The pill's own glass, magnified about the lens's centre: under the lens
+                        // the pill seems to swell out to the bent edge.
+                        RefractedPillGlass(unified: unifiedGlass)
                             .scaleEffect(Self.refraction, anchor: anchor)
                         // Prism dispersion, after the "prism warp" glass in the user's Figma
-                        // reference: each colour bends by a slightly different amount, so the
-                        // bent edge splits into a red, a green and a blue fringe.
+                        // reference: the bent edge splits into soft warm and blue fringes.
                         ForEach(Self.prismBands.indices, id: \.self) { i in
                             let band = Self.prismBands[i]
                             Capsule()
@@ -825,12 +855,10 @@ private struct CaptureTimerLensPicker: View {
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                        .mask {
-                            Capsule()
-                                .frame(width: CGFloat(size.width), height: CGFloat(size.height))
-                                .position(x: centre, y: geometry.size.height / 2)
-                        }
-                        .transition(.opacity)
+                    // Only where the lens overhangs the pill: inside it the real glass shows, so
+                    // the refracted copy never doubles it. The labels above stay unrefracted.
+                    .mask { LensOverhang(lens: lensRect, pill: pillRect) }
+                    .transition(.opacity)
                 }
 
                 // The labels show through the clear lens unchanged, neighbours included, as in the
