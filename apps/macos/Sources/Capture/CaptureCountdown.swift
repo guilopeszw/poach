@@ -27,7 +27,9 @@ final class CaptureCountdownController {
         isRunning = true
         cancelled = false
         let model = CaptureCountdownModel(count: seconds)
-        let overlay = makeOverlay(screen: screen, outline: outline, model: model)
+        // An area keeps the pill's corner radius; displays and windows keep square corners.
+        let overlay = makeOverlay(screen: screen, outline: outline, model: model,
+                                  cornerRadius: attachPill ? CapturePillLayout.areaCornerRadius(for: outline) : 0)
         let pillFrame = attachPill ? CapturePillLayout.panelFrame(attachedTo: outline, on: screen)
             : CapturePillLayout.panelFrame(on: screen)
         let cancelPanel = makePillPanel(frame: pillFrame, screenshot: screenshot)
@@ -61,7 +63,7 @@ final class CaptureCountdownController {
         cancelled = true
     }
 
-    private func makeOverlay(screen: NSScreen, outline: CGRect, model: CaptureCountdownModel) -> NSPanel {
+    private func makeOverlay(screen: NSScreen, outline: CGRect, model: CaptureCountdownModel, cornerRadius: CGFloat) -> NSPanel {
         let panel = CountdownPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Poach — Countdown"
         panel.level = .screenSaver
@@ -76,7 +78,7 @@ final class CaptureCountdownController {
             width: outline.width,
             height: outline.height
         )
-        panel.contentView = TransparentHostingView(rootView: CaptureCountdownOverlayView(model: model, outline: local))
+        panel.contentView = TransparentHostingView(rootView: CaptureCountdownOverlayView(model: model, outline: local, cornerRadius: cornerRadius))
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.setFrame(screen.frame, display: true)
@@ -120,13 +122,14 @@ private final class CountdownPanel: NSPanel {
 private struct CaptureCountdownOverlayView: View {
     @ObservedObject var model: CaptureCountdownModel
     let outline: CGRect
+    var cornerRadius: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Rectangle()
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(.black.opacity(0.35), lineWidth: 3)
-                .overlay { Rectangle().strokeBorder(.white, lineWidth: 2) }
+                .overlay { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(.white, lineWidth: 2) }
                 .frame(width: outline.width, height: outline.height)
                 .offset(x: outline.minX, y: outline.minY)
             PoachCountdown(count: model.count)

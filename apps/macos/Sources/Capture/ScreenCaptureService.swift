@@ -544,8 +544,10 @@ private struct RecordingAreaShadowView: View {
     var body: some View {
         GeometryReader { geometry in
             Canvas { context, size in
+                // The pill's corner radius, like the selection it came from.
+                let rounded = Path(roundedRect: area, cornerRadius: CapturePillLayout.areaCornerRadius(for: area), style: .continuous)
                 var outsideArea = Path(CGRect(origin: .zero, size: size))
-                outsideArea.addRect(area)
+                outsideArea.addPath(rounded)
                 context.fill(
                     outsideArea,
                     with: .color(.black.opacity(0.24)),
@@ -554,7 +556,7 @@ private struct RecordingAreaShadowView: View {
 
                 context.drawLayer { edge in
                     edge.addFilter(.shadow(color: .black.opacity(0.42), radius: 16, x: 0, y: 3))
-                    edge.stroke(Path(area), with: .color(.white.opacity(0.22)), lineWidth: 1)
+                    edge.stroke(rounded, with: .color(.white.opacity(0.22)), lineWidth: 1)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
