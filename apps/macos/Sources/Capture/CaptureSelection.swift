@@ -21,6 +21,7 @@ enum CaptureTarget {
 final class CaptureSelectionWindowController {
     static let shared = CaptureSelectionWindowController()
     private var panels: [NSPanel] = []
+    private var glassBackdrops: [CaptureGlassBackdrop] = []
     private var continuation: CheckedContinuation<CaptureTarget, Error>?
     /// Esc, registered only while the overlay is up. macOS often keeps the previous app
     /// active (for example after ⌘⇧P), so a view-level shortcut would never see the key.
@@ -49,6 +50,9 @@ final class CaptureSelectionWindowController {
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             for (screen, displayID) in screens {
+                let glassBackdrop = CaptureGlassBackdrop()
+                glassBackdrops.append(glassBackdrop)
+                if mode == .selectedPortion { glassBackdrop.start(displayID: displayID) }
                 let panel = CaptureSelectionPanel(
                     contentRect: NSRect(origin: .zero, size: screen.frame.size),
                     styleMask: [.borderless, .nonactivatingPanel],
@@ -66,7 +70,7 @@ final class CaptureSelectionWindowController {
                 panel.contentView = TransparentHostingView(rootView: CaptureSelectionView(
                     state: state,
                     displayID: displayID
-                ))
+                ).environment(\.captureGlassBackdrop, glassBackdrop))
                 panel.backgroundColor = .clear
                 panel.isOpaque = false
                 panel.setFrame(screen.frame, display: true)
@@ -83,6 +87,8 @@ final class CaptureSelectionWindowController {
 
     private func finish(_ result: Result<CaptureTarget, Error>) {
         escape.unregister()
+        glassBackdrops.forEach { $0.stop() }
+        glassBackdrops.removeAll()
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         switch result {
@@ -190,7 +196,7 @@ private struct CaptureSelectionView: View {
         }
     }
 
-    /// macOS 26: the area's outline is a ring of Liquid Glass the pill can melt out of.
+    /// macOS 26: a clear glass surface refracts the edges without frosting the selection.
     private static var glassOutline: Bool {
         if #available(macOS 26.0, *) { true } else { false }
     }
@@ -241,25 +247,21 @@ private struct CaptureSelectionView: View {
                 .accessibilityHint(state.mode == .selectedPortion ? "Drag to select an area. The capture controls appear below it." : "Press Tab to choose the next target")
 
                 if state.mode == .selectedPortion {
-                    // While dragging (or below the minimum size), the glass ring alone; once the
-                    // pill drops, the drop-in draws the ring so both are one glass shape.
+                    // The drop-in owns both surfaces after release, so their glass can merge.
                     if #available(macOS 26.0, *), let area = dragSelection, area.width > 3, area.height > 3,
                        !(canStart && !dragging) {
-                        AreaOutlineGlass(area: area)
+                        CaptureAreaGlass(area: area)
                     }
                     // Only once an area is chosen: a drop falls from its outline and becomes the pill.
                     if let area = dragSelection, canStart, !dragging {
                         let frame = CaptureTargetGeometry.attachedPillFrame(
                             for: area, pillSize: CapturePillLayout.size,
                             in: CGRect(origin: .zero, size: geometry.size))
-                        // The drop leaves the bottom edge, or the top edge when the pill sits above
-                        // or inside the area, so it always falls toward the pill.
-                        let origin = CGPoint(x: min(max(frame.midX, area.minX), area.maxX),
-                                             y: frame.minY >= area.maxY ? area.maxY : area.minY)
+                        let origin = CaptureTargetGeometry.pillAttachmentPoint(
+                            for: area, pillFrame: frame, cornerRadius: CapturePillLayout.areaCornerRadius(for: area))
                         CapturePillDropIn(origin: origin, frame: frame, outline: Self.glassOutline ? area : nil) { opacity in
                             pill(controlsOpacity: opacity)
                         }
-                        .transition(.opacity)
                     }
                 } else {
                     pill()
@@ -309,7 +311,7 @@ private struct CaptureSelectionView: View {
             .onEnded { _ in
                 // Displays and windows are picked by pointing; an area shows its pill once the drag ends.
                 guard state.mode == .selectedPortion else { return state.point(at: displayID) }
-                withAnimation(.easeOut(duration: 0.15)) { dragging = false }
+                dragging = false
             }
     }
 

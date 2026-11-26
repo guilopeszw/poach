@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreVideo
 import Foundation
 
 @main enum CaptureSelectionTests {
@@ -19,10 +20,52 @@ import Foundation
         // Area fills the screen: inside its bottom edge.
         precondition(CaptureTargetGeometry.attachedPillFrame(for: screen, pillSize: pill, in: screen)
             == CGRect(x: 416, y: 736, width: 168, height: 48))
+        // A drop always leaves the facing edge, including when the pill has to stay inside.
+        let area = CGRect(x: 200, y: 100, width: 400, height: 300)
+        let below = CaptureTargetGeometry.attachedPillFrame(for: area, pillSize: pill, in: screen)
+        precondition(CaptureTargetGeometry.pillAttachmentPoint(for: area, pillFrame: below, cornerRadius: 24)
+            == CGPoint(x: area.midX, y: area.maxY))
+        let tallArea = CGRect(x: 200, y: 400, width: 400, height: 380)
+        let above = CaptureTargetGeometry.attachedPillFrame(for: tallArea, pillSize: pill, in: screen)
+        precondition(CaptureTargetGeometry.pillAttachmentPoint(for: tallArea, pillFrame: above, cornerRadius: 24)
+            == CGPoint(x: tallArea.midX, y: tallArea.minY))
+        let inset = CaptureTargetGeometry.attachedPillFrame(for: screen, pillSize: pill, in: screen)
+        precondition(CaptureTargetGeometry.pillAttachmentPoint(for: screen, pillFrame: inset, cornerRadius: 24)
+            == CGPoint(x: screen.midX, y: screen.maxY))
+        // Near the display edge the pill is clamped sideways; its drop stays on a straight
+        // part of the selected area's rounded edge, rather than emerging outside the surface.
+        let narrow = CGRect(x: 0, y: 100, width: 32, height: 60)
+        let side = CaptureTargetGeometry.attachedPillFrame(for: narrow, pillSize: pill, in: screen)
+        precondition(CaptureTargetGeometry.pillAttachmentPoint(for: narrow, pillFrame: side, cornerRadius: 24)
+            == CGPoint(x: 16, y: narrow.maxY))
         timerModel()
         print("Capture timer model passed.")
         targetGeometry()
         print("Capture target geometry passed.")
+        glassFrameLifetime()
+        print("Capture glass frame lifetime passed.")
+    }
+
+    private static func glassFrameLifetime() {
+        var buffer: CVPixelBuffer?
+        precondition(CVPixelBufferCreate(nil, 8, 8, kCVPixelFormatType_32BGRA, nil, &buffer) == kCVReturnSuccess)
+        guard let buffer else { preconditionFailure("Could not create the synthetic frame") }
+        let frames = CaptureGlassFrames()
+        // Frames cannot be retained before a selection starts, nor after it ends.
+        precondition(!frames.replace(with: buffer))
+        precondition(frames.latest().0 == nil)
+        frames.setEnabled(true)
+        precondition(frames.replace(with: buffer))
+        precondition(!frames.replace(with: buffer))
+        precondition(frames.latest().0 != nil)
+        frames.setEnabled(false)
+        precondition(frames.latest().0 == nil && frames.latest().1 == nil)
+        precondition(!frames.replace(with: buffer))
+        // A late callback cannot revive the previous selection's pixels.
+        precondition(frames.latest().0 == nil)
+        frames.setEnabled(true)
+        precondition(frames.replace(with: buffer))
+        frames.setEnabled(false)
     }
 
     private static func timerModel() {

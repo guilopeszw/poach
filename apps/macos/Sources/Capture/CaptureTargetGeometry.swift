@@ -14,6 +14,16 @@ enum CaptureTargetGeometry {
         CGRect(x: rect.minX, y: primaryScreenHeight - rect.maxY, width: rect.width, height: rect.height)
     }
 
+    /// The edge the liquid controls leave. An inset pill leaves the nearest horizontal edge,
+    /// rather than travelling all the way through the selection from its opposite side.
+    static func pillAttachmentPoint(for area: CGRect, pillFrame: CGRect, cornerRadius: CGFloat) -> CGPoint {
+        let inset = min(max(0, cornerRadius), area.width / 2)
+        return CGPoint(
+            x: min(max(pillFrame.midX, area.minX + inset), area.maxX - inset),
+            y: pillFrame.midY >= area.midY ? area.maxY : area.minY
+        )
+    }
+
     /// Where the capture pill sits for a selected area, in the same top-left coordinates as `area`.
     /// The pill is centred on the area, `gap` points away from its outline: below it when there is
     /// room, otherwise above it, otherwise just inside its bottom edge. It never leaves `bounds`
