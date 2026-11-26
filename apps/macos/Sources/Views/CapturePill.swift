@@ -48,6 +48,22 @@ enum CapturePillLayout {
         frame(attachedTo: area, on: screen).insetBy(dx: -panelMargin, dy: -panelMargin)
     }
 
+    /// The centres of the three buttons, the same as the Off · 3s · 10s options, so the icons sit
+    /// where the timer choices do.
+    static var slotCentres: [CGFloat] {
+        let lens = CaptureTimerLensLayout(pillWidth: Double(size.width), pillHeight: Double(size.height))
+        return (0..<3).map { CGFloat(lens.centre(of: $0)) }
+    }
+
+    /// The span of slot `index` when the three slots cover the whole pill, split halfway between
+    /// their centres (the unified pill's glass cells).
+    static func slotSpan(_ index: Int) -> (minX: CGFloat, maxX: CGFloat) {
+        let c = slotCentres
+        let lower = index == 0 ? 0 : (c[index - 1] + c[index]) / 2
+        let upper = index == c.count - 1 ? size.width : (c[index] + c[index + 1]) / 2
+        return (lower, upper)
+    }
+
     static var panelSize: CGSize {
         CGSize(width: size.width + panelMargin * 2, height: size.height + panelMargin * 2)
     }
@@ -146,7 +162,7 @@ struct CapturePill: View {
     }
 
     private var buttons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: CapturePillTimerButton.spacing) {
             Button { timerExpanded = true } label: {
                 CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? PoachPalette.ink : Self.activeTint)
@@ -324,7 +340,7 @@ extension CapturePill {
 
     private var nativeButtons: some View {
         HStack(spacing: 0) {
-            nativeButton(id: "timer", enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
+            nativeButton(id: "timer", slot: 0, enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
                 CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? AnyShapeStyle(.primary) : AnyShapeStyle(Self.activeYellow))
             }
@@ -333,7 +349,7 @@ extension CapturePill {
             .accessibilityHint("Shows timer options")
             .help("Capture timer: \(timer.spokenTitle) (T)")
 
-            nativeButton(id: "primary", enabled: primaryEnabled, prominent: true, action: onPrimary) {
+            nativeButton(id: "primary", slot: 1, enabled: primaryEnabled, prominent: true, action: onPrimary) {
                 Image(systemName: primarySymbol)
                     .font(.system(size: 13, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
@@ -343,7 +359,7 @@ extension CapturePill {
             .help(primaryHelp)
             .keyboardShortcut(.defaultAction)
 
-            nativeButton(id: "cancel", enabled: cancelEnabled, prominent: false, action: onCancel) {
+            nativeButton(id: "cancel", slot: 2, enabled: cancelEnabled, prominent: false, action: onCancel) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -360,15 +376,19 @@ extension CapturePill {
         return screenshot ? PoachPalette.ink : .red
     }
 
-    private func nativeButton<Label: View>(id: String, enabled: Bool, prominent: Bool, action: @escaping () -> Void,
+    private func nativeButton<Label: View>(id: String, slot: Int, enabled: Bool, prominent: Bool, action: @escaping () -> Void,
                                            @ViewBuilder label: () -> Label) -> some View {
-        // One cell of the pill; the cells' glass merges into a single capsule.
-        Button(action: action) {
+        // One cell of the pill; the cells' glass merges into a single capsule. The cells cover the
+        // pill, split halfway between the slot centres, and each icon sits on its slot's centre.
+        let span = CapturePillLayout.slotSpan(slot)
+        let width = span.maxX - span.minX
+        return Button(action: action) {
             label()
                 .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 .frame(width: 44, height: 32)
                 .background { if prominent { Capsule().fill(prominentTint) } }
-                .frame(width: CapturePillLayout.size.width / 3, height: CapturePillLayout.size.height)
+                .offset(x: CapturePillLayout.slotCentres[slot] - (span.minX + width / 2))
+                .frame(width: width, height: CapturePillLayout.size.height)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -642,12 +662,16 @@ extension EnvironmentValues {
     }
 }
 
-/// Where the ⏱ button sits inside the pill: the first of three 44 × 32 buttons, 8 pt apart, centred.
+/// Where the ⏱ button sits inside the pill: the first of three 44 × 32 buttons centred on the
+/// Off · 3s · 10s option centres (`CapturePillLayout.slotCentres`).
 private enum CapturePillTimerButton {
     static let size = CGSize(width: 44, height: 32)
+    static var spacing: CGFloat {
+        let c = CapturePillLayout.slotCentres
+        return c[1] - c[0] - size.width
+    }
     static var origin: CGPoint {
-        let row = size.width * 3 + 8 * 2
-        return CGPoint(x: (CapturePillLayout.size.width - row) / 2, y: (CapturePillLayout.size.height - size.height) / 2)
+        CGPoint(x: CapturePillLayout.slotCentres[0] - size.width / 2, y: (CapturePillLayout.size.height - size.height) / 2)
     }
 }
 
