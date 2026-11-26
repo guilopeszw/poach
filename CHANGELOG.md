@@ -4,6 +4,12 @@ User-visible changes are recorded here. **Unreleased** describes changes on `mai
 
 ## Unreleased
 
+No changes yet.
+
+## 1.0.1 — 2026-11-26
+
+[Release and downloads](https://github.com/guilopeszw/poach/releases/tag/v1.0.1).
+
 ### Changed
 
 - Reduce the macOS app bundle size by using Bun for inspection and MCP while retaining the existing connector executable path.
