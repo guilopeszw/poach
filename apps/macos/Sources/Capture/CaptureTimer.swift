@@ -59,7 +59,7 @@ struct CaptureTimerLensLayout {
 
     static let inset = 6.0
     static let overhang = 6.0
-    static let restingWidth = 60.0
+    static let restingWidth = 76.0
 
     var restingSize: (width: Double, height: Double) {
         (Self.restingWidth, pillHeight - 2 * Self.inset)
