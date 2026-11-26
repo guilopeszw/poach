@@ -207,16 +207,25 @@ struct PoachDesignLab: View {
         let frame = CaptureTargetGeometry.attachedPillFrame(for: area, pillSize: CapturePillLayout.size,
                                                              in: CGRect(origin: .zero, size: size))
         let origin = CGPoint(x: frame.midX, y: area.maxY)
+        let radius = CapturePillLayout.areaCornerRadius(for: area)
+        let glass: Bool = { if #available(macOS 26.0, *) { true } else { false } }()
         return ZStack(alignment: .topLeading) {
             LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
-            Color.black.opacity(0.35)
-            Rectangle().fill(Color(red: 0.1, green: 0.1, blue: 0.12))
+            RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                 .frame(width: area.width, height: area.height)
                 .offset(x: area.minX, y: area.minY)
-            Rectangle().strokeBorder(.white, lineWidth: 2)
-                .frame(width: area.width, height: area.height)
-                .offset(x: area.minX, y: area.minY)
-            CapturePillDropIn(origin: origin, frame: frame) { opacity in
+            // The selection overlay's dimming around the rounded area.
+            Canvas { context, canvas in
+                var mask = Path(CGRect(origin: .zero, size: canvas))
+                mask.addPath(Path(roundedRect: area, cornerRadius: radius, style: .continuous))
+                context.fill(mask, with: .color(.black.opacity(0.48)), style: FillStyle(eoFill: true))
+            }
+            if !glass {
+                RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(.white, lineWidth: 2)
+                    .frame(width: area.width, height: area.height)
+                    .offset(x: area.minX, y: area.minY)
+            }
+            CapturePillDropIn(origin: origin, frame: frame, outline: glass ? area : nil) { opacity in
                 CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(false),
                             onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
             }
