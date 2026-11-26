@@ -290,13 +290,24 @@ extension CapturePill {
     /// `.unified`: only system glass. The ⏱ button and the timer options share a
     /// `glassEffectID`, so opening the timer morphs the button's glass into the options.
     fileprivate var nativeBody: some View {
-        GlassEffectContainer(spacing: 6) {
-            ZStack {
-                if timerExpanded && isSelecting {
-                    nativeOptions
-                } else {
-                    nativeButtons
+        ZStack {
+            GlassEffectContainer(spacing: 6) {
+                ZStack {
+                    if timerExpanded && isSelecting {
+                        // Only the glass: the options are drawn above the container, so nothing
+                        // in it can clip the lens while it lifts out of the pill.
+                        Color.clear
+                            .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
+                            .glassEffect(.regular, in: Capsule())
+                            .glassEffectID("timer", in: glassSpace)
+                    } else {
+                        nativeButtons
+                    }
                 }
+            }
+            if timerExpanded && isSelecting {
+                nativeOptions
+                    .transition(.opacity)
             }
         }
         .opacity(controlsOpacity)
@@ -374,10 +385,6 @@ extension CapturePill {
         )
         .padding(.horizontal, 8)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        // Applied to the options themselves: as a background inside the container the glass was
-        // drawn over them.
-        .glassEffect(.regular, in: Capsule())
-        .glassEffectID("timer", in: glassSpace)
         .focusable()
         .focused($optionsFocused)
         .focusEffectDisabled()
@@ -415,10 +422,12 @@ struct CapturePillDropIn<Pill: View>: View {
     private static var dropRadius: CGFloat { 8 }
 
     var body: some View {
-        if reduceMotion {
+        // Once landed the pill is drawn directly: no timeline and no mask. A screen recording showed
+        // the pressed timer lens clipped to the pill's capsule while it animated, in the real overlay.
+        if reduceMotion || finished {
             pill(1).position(x: frame.midX, y: frame.midY)
         } else {
-            TimelineView(.animation(paused: finished)) { timeline in
+            TimelineView(.animation) { timeline in
                 content(at: timeline.date.timeIntervalSince(start))
             }
             .task {
@@ -463,16 +472,8 @@ struct CapturePillDropIn<Pill: View>: View {
                 let height = max(4, rise <= 0 ? squash : squash + (frame.height - squash) * rise)
                 let g = min(max(x / 0.6, 0), 1)
                 let controls = min(max((t - growStart - Self.grow * 0.55) / Self.fade, 0), 1)
-                // Once landed the pill is unmasked, so the pressed timer lens can stand out of it.
-                let landed = x >= 1
                 pill(controls)
-                    .mask {
-                        if landed {
-                            Rectangle().padding(-CapturePillLayout.panelMargin)
-                        } else {
-                            Capsule().frame(width: width, height: height)
-                        }
-                    }
+                    .mask { Capsule().frame(width: width, height: height) }
                     .position(x: frame.midX, y: frame.midY)
                 Capsule()
                     .fill(Color.white.opacity(Double(max(0, 1 - g * 1.3))))
