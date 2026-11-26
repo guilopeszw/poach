@@ -139,17 +139,31 @@ struct PoachDesignLab: View {
                             .fixedSize()
                     }
                 }
-                VStack(spacing: 40) {
+                VStack(spacing: 4) {
                     CapturePill(phase: .selecting(canStart: true), timerExpanded: $pillTimerExpanded,
                                 onPrimary: {}, onCancel: {})
                     // The open timer in light and dark; `.custom` forces light, `.unified` follows the scheme.
                     HStack(spacing: 24) {
                         CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
                                     onPrimary: {}, onCancel: {})
-                        CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
-                                    onPrimary: {}, onCancel: {})
-                            .environment(\.colorScheme, .dark)
+                        // Dark, and wrapped in the area overlay's drop-in like the real selection.
+                        overlayPill { opacity in
+                            CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
+                                        onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
+                        }
+                        .environment(\.colorScheme, .dark)
                     }
+                    // The lens held as if pressed over 3s, in light and dark.
+                    HStack(spacing: 24) {
+                        CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(true),
+                                    onPrimary: {}, onCancel: {})
+                        overlayPill { opacity in
+                            CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(true),
+                                        onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
+                        }
+                        .environment(\.colorScheme, .dark)
+                    }
+                    .environment(\.timerLensPreviewX, 76)
                     CapturePill(phase: .recording(elapsed: 12, limit: 30), timerExpanded: .constant(false),
                                 onPrimary: {}, onCancel: {})
                 }
@@ -157,6 +171,15 @@ struct PoachDesignLab: View {
             .frame(width: 480, height: 360)
             .clipped()
         }
+    }
+
+    /// A pill inside `CapturePillDropIn`, sized like the area pill's panel, so the lab shows the
+    /// same wrapper (and any clipping it adds) as the real selection overlay.
+    private func overlayPill<Pill: View>(_ pill: @escaping (Double) -> Pill) -> some View {
+        let frame = CGRect(x: CapturePillLayout.panelMargin, y: CapturePillLayout.panelMargin,
+                           width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
+        return CapturePillDropIn(origin: CGPoint(x: frame.midX, y: 0), frame: frame, pill: pill)
+            .frame(width: CapturePillLayout.panelSize.width, height: CapturePillLayout.panelSize.height)
     }
 
     private var videoURL: URL {
