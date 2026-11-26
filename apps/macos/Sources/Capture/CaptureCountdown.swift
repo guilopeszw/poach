@@ -127,11 +127,15 @@ private struct CaptureCountdownOverlayView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(.black.opacity(0.35), lineWidth: 3)
-                .overlay { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(.white, lineWidth: 2) }
-                .frame(width: outline.width, height: outline.height)
-                .offset(x: outline.minX, y: outline.minY)
+            if #available(macOS 26.0, *), cornerRadius > 0 {
+                CaptureAreaGlass(area: outline)
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(.black.opacity(0.35), lineWidth: 3)
+                    .overlay { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(.white, lineWidth: 2) }
+                    .frame(width: outline.width, height: outline.height)
+                    .offset(x: outline.minX, y: outline.minY)
+            }
             PoachCountdown(count: model.count)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.count)
                 .position(x: outline.midX, y: outline.midY)

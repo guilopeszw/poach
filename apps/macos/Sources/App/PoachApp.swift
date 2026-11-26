@@ -79,7 +79,8 @@ struct PoachApp: App {
     @ViewBuilder
     private var mainWindow: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--poach-design-lab") {
+        if ProcessInfo.processInfo.arguments.contains("--poach-design-lab")
+            || ProcessInfo.processInfo.environment["POACH_DESIGN_LAB"] == "1" {
             PoachDesignLab()
         } else {
             captureWindow
