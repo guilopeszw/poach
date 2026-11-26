@@ -21,7 +21,7 @@ extension EnvironmentValues {
 
 struct PoachDesignLab: View {
     private enum Surface: String, CaseIterable {
-        case capture = "Capture", editor = "Editor", settings = "Settings", welcome = "Welcome", pill = "Pill"
+        case capture = "Capture", editor = "Editor", settings = "Settings", welcome = "Welcome", pill = "Pill", drop = "Drop"
     }
 
     private enum Dataset: String, CaseIterable {
@@ -65,6 +65,8 @@ struct PoachDesignLab: View {
     @State private var pillTimerOpen = true
     /// Alternates between resting and pressed, to watch the lens lift out of the pill.
     @State private var pillLensPress: CGFloat?
+    /// Re-keys the drop specimen so the area pill's entrance replays.
+    @State private var dropReplay = 0
     @AppStorage(PoachCaptureTimer.storageKey) private var labTimerSeconds = PoachCaptureTimer.off.rawValue
     @AppStorage(CapturePillStyle.storageKey) private var pillStyle = CapturePillStyle.custom.rawValue
 
@@ -126,6 +128,8 @@ struct PoachDesignLab: View {
                 .frame(width: width == 320 ? 320 : 440)
         case .welcome:
             PoachOnboardingView(onContinue: { surface = .capture })
+        case .drop:
+            dropSpecimen
         case .pill:
             // A busy backdrop, so the glass's refraction and tint are visible.
             ZStack {
@@ -194,6 +198,38 @@ struct PoachDesignLab: View {
                            width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
         return CapturePillDropIn(origin: CGPoint(x: frame.midX, y: 0), frame: frame, pill: pill)
             .frame(width: CapturePillLayout.panelSize.width, height: CapturePillLayout.panelSize.height)
+    }
+
+    /// The area pill's entrance under a selection outline, replayed every 2 s.
+    private var dropSpecimen: some View {
+        let size = CGSize(width: 480, height: 360)
+        let area = CGRect(x: 90, y: 50, width: 300, height: 180)
+        let frame = CaptureTargetGeometry.attachedPillFrame(for: area, pillSize: CapturePillLayout.size,
+                                                             in: CGRect(origin: .zero, size: size))
+        let origin = CGPoint(x: frame.midX, y: area.maxY)
+        return ZStack(alignment: .topLeading) {
+            LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+            Color.black.opacity(0.35)
+            Rectangle().fill(Color(red: 0.1, green: 0.1, blue: 0.12))
+                .frame(width: area.width, height: area.height)
+                .offset(x: area.minX, y: area.minY)
+            Rectangle().strokeBorder(.white, lineWidth: 2)
+                .frame(width: area.width, height: area.height)
+                .offset(x: area.minX, y: area.minY)
+            CapturePillDropIn(origin: origin, frame: frame) { opacity in
+                CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(false),
+                            onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
+            }
+            .id(dropReplay)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                dropReplay += 1
+            }
+        }
     }
 
     private var videoURL: URL {
