@@ -63,6 +63,9 @@ struct PoachDesignLab: View {
     @StateObject private var status = InspectionStatus()
     @State private var pillTimerExpanded = false
     @State private var pillTimerOpen = true
+    /// Alternates between resting and pressed, to watch the lens lift out of the pill.
+    @State private var pillLensPress: CGFloat?
+    @AppStorage(PoachCaptureTimer.storageKey) private var labTimerSeconds = PoachCaptureTimer.off.rawValue
     @AppStorage(CapturePillStyle.storageKey) private var pillStyle = CapturePillStyle.custom.rawValue
 
     var body: some View {
@@ -153,7 +156,7 @@ struct PoachDesignLab: View {
                         }
                         .environment(\.colorScheme, .dark)
                     }
-                    // The lens held as if pressed over 3s, in light and dark.
+                    // The lens pressed over Off (past the pill's left edge) and released every 2 s, with the press spring, in light and dark.
                     HStack(spacing: 24) {
                         CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(true),
                                     onPrimary: {}, onCancel: {})
@@ -163,7 +166,18 @@ struct PoachDesignLab: View {
                         }
                         .environment(\.colorScheme, .dark)
                     }
-                    .environment(\.timerLensPreviewX, 76)
+                    .environment(\.timerLensPreviewX, pillLensPress)
+                    .task {
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .seconds(2))
+                            withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                                // Like a real press, the option under the lens becomes the choice at once.
+                                let press = pillLensPress == nil
+                                pillLensPress = press ? 10 : nil
+                                labTimerSeconds = press ? PoachCaptureTimer.off.rawValue : PoachCaptureTimer.ten.rawValue
+                            }
+                        }
+                    }
                     CapturePill(phase: .recording(elapsed: 12, limit: 30), timerExpanded: .constant(false),
                                 onPrimary: {}, onCancel: {})
                 }
