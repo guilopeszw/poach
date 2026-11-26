@@ -9,19 +9,37 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const out = join(root,'outputs/connectors');
 const market = join(out,'marketplace');
 const plugin = join(market,'plugins/poach');
-const entry = join(plugin,'server.mjs');
+const appServerPath = process.argv[2];
+const entry = appServerPath ?? join(plugin,'server.mjs');
 const stage = await mkdtemp(join(tmpdir(),'poach-extension-'));
 const json = async (path, data) => {
   await mkdir(dirname(path),{recursive:true});
   await writeFile(path, JSON.stringify(data,null,2)+'\n');
 };
-const metadata = {name:'poach', version:'1.0.0', description:'Read the screen capture, keyframes, and timestamped notes you share from Poach.'};
+const metadata = {name:'poach', version:'1.0.1', description:'Read the screen capture, keyframes, and timestamped notes you share from Poach.'};
 try {
   await mkdir(plugin,{recursive:true});
-  await build({entryPoints:[resolve(root,'packages/mcp-server/dist/index.js')],outfile:entry,bundle:true,platform:'node',format:'esm',banner:{js:"import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},target:'node20'});
+  await build({
+    entryPoints: [resolve(root, 'packages/mcp-server/dist/index.js')],
+    outfile: entry,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    banner: {js: "import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);"},
+    target: 'node20',
+    plugins: appServerPath ? [{
+      name: 'packaged-core',
+      setup(build) {
+        build.onResolve({filter: /^@poach\/core$/}, () => ({
+          path: './core/dist/index.js',
+          external: true,
+        }));
+      },
+    }] : [],
+  });
   const launcher = join(root, 'scripts/launch-connector.sh');
   await json(join(market,'.agents/plugins/marketplace.json'),{name:'poach-local',plugins:[{name:'poach',source:{source:'local',path:'./plugins/poach'},policy:{installation:'AVAILABLE',authentication:'ON_INSTALL'},category:'Productivity'}]});
-  const logo = join(root, 'apps/macos/Assets/PoachIcon.png');
+  const logo = join(root, 'apps/macos/Assets/PoachConnectorIcon.png');
   await mkdir(join(plugin, 'assets'), {recursive:true});
   await copyFile(logo, join(plugin, 'assets/poach.png'));
   await copyFile(logo, join(stage, 'icon.png'));

@@ -1,11 +1,11 @@
 <p align="center"><img src="docs/media/poach-logo.png" width="88" alt="Orange Poach pouch on a cobalt tile"></p>
 <h1 align="center">Poach</h1>
 <p align="center">A lightweight Mac app for the UI you wish you’d made.</p>
-<p align="center"><strong><a href="https://github.com/guilopeszw/poach/releases/download/v1.0.0/Poach-arm64.zip">Download for Apple silicon</a></strong></p>
+<p align="center"><strong><a href="https://github.com/guilopeszw/poach/releases/latest/download/Poach-arm64.zip">Download for Apple silicon</a></strong></p>
 
 <p align="center"><a href="docs/media/poach-editor.png"><img src="docs/media/poach-editor.png" width="800" alt="Poach’s editor showing a blue and orange Night Shift Radio player, its color palette, the Snatch font button, and a handoff to Codex."></a></p>
 
-**New in 1.0.0:** faster analysis, detail crops, and the Chrome inspector. See the [changelog](CHANGELOG.md#100--2026-11-22) or [release notes](https://github.com/guilopeszw/poach/releases/tag/v1.0.0).
+**New in 1.0.1:** a smaller app and smaller assistant connectors. See the [release notes](https://github.com/guilopeszw/poach/releases/tag/v1.0.1).
 
 ## Poach with taste
 
@@ -37,15 +37,15 @@ Download the Apple silicon build above, unzip it, and move **Poach.app** to Appl
 
 | Assistant | Install the MCP connector |
 | --- | --- |
-| [Codex installer](https://github.com/guilopeszw/poach/releases/download/v1.0.0/Poach-Codex.zip) | Unzip and double-click **Install Codex.command**. |
-| [Claude Desktop extension](https://github.com/guilopeszw/poach/releases/download/v1.0.0/Poach.mcpb) | Open **Settings → Extensions → Advanced settings → Install Extension**. Select the downloaded file and enable Poach. |
+| [Codex installer](https://github.com/guilopeszw/poach/releases/latest/download/Poach-Codex.zip) | Unzip and double-click **Install Codex.command**. |
+| [Claude Desktop extension](https://github.com/guilopeszw/poach/releases/latest/download/Poach.mcpb) | Open **Settings → Extensions → Advanced settings → Install Extension**. Select the downloaded file and enable Poach. |
 
 **Requirements.** Native recording and screenshots require macOS 15 or later. On macOS 14 you can import images and videos. Clips can be up to 30 seconds long. Poach records the screen without audio.
 
 <details>
 <summary>Download and first-launch help</summary>
 
-Poach includes Node.js and FFmpeg. Verify the downloads with the [SHA-256 checksums](https://github.com/guilopeszw/poach/releases/download/v1.0.0/SHA256SUMS.txt).
+Poach includes Bun and FFmpeg. Verify the downloads with the [SHA-256 checksums](https://github.com/guilopeszw/poach/releases/latest/download/SHA256SUMS.txt).
 
 Poach 1.0 uses a local development signature and ships without Apple notarization. On first launch, macOS may block it:
 

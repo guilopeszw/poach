@@ -23,7 +23,6 @@ fi
 
 pnpm --filter @poach/core build
 pnpm --filter @poach/mcp-server build
-node "$repo_root/scripts/build-connectors.mjs"
 swift build --package-path "$repo_root/apps/macos" --configuration release
 mkdir -p "$repo_root/outputs"
 stage_dir="$(mktemp -d "$repo_root/outputs/.poach-build.XXXXXX")"
@@ -39,7 +38,7 @@ cp "$repo_root/packages/core/package.json" "$engine_path/package.json"
 cp "$repo_root/apps/macos/.build/release/Poach" "$app_path/Contents/MacOS/Poach"
 cp "$repo_root/apps/macos/Info.plist" "$app_path/Contents/Info.plist"
 if [[ -f "$repo_root/NOTICE" ]]; then cp "$repo_root/NOTICE" "$app_path/Contents/Resources/NOTICE"; fi
-cp "$repo_root/outputs/connectors/marketplace/plugins/poach/server.mjs" "$app_path/Contents/Resources/server.mjs"
+node "$repo_root/scripts/build-connectors.mjs" "$app_path/Contents/Resources/server.mjs"
 chrome_path="$app_path/Contents/Resources/ChromeExtension"
 mkdir -p "$chrome_path"
 cp "$repo_root/apps/chrome/"{manifest.json,bridge.js,capture.js,popup.html,popup.css,popup.js,poach.png} "$chrome_path/"
@@ -57,14 +56,16 @@ if [[ -s "$app_path/Contents/Resources/Assets.car" ]]; then
 fi
 runtime="$app_path/Contents/Resources/runtime"
 bash "$repo_root/scripts/bundle-runtime.sh" "$runtime"
-for tool in ffmpeg ffprobe; do
+# Preserve Bun's upstream signature and hardened runtime entitlements.
+codesign --verify --strict "$runtime/bin/bun"
+for executable in "$runtime/bin/"{ffmpeg,ffprobe} "$runtime/lib/"*.dylib; do
   if [[ "$signing_identity" == "Poach Local Development" || "$signing_identity" == "-" ]]; then
-    codesign --force --timestamp=none --sign - "$runtime/bin/$tool"
+    codesign --force --timestamp=none --sign - "$executable"
   else
-    codesign --force --options runtime --timestamp --sign "$signing_identity" "$runtime/bin/$tool"
+    codesign --force --options runtime --timestamp --sign "$signing_identity" "$executable"
   fi
+  codesign --verify --strict "$executable"
 done
-codesign --verify --strict "$runtime/bin/node"
 if [[ "$signing_identity" == "-" ]]; then
   codesign --force --sign - "$app_path"
   echo "Development build: ad-hoc signing can invalidate Screen Recording approval after rebuilding. Use an Apple Development identity from Xcode or set POACH_CODESIGN_IDENTITY explicitly." >&2
@@ -73,7 +74,7 @@ elif [[ "$signing_identity" == "Poach Local Development" ]]; then
 else
   codesign --force --options runtime --timestamp --sign "$signing_identity" "$app_path"
 fi
-codesign --verify --strict "$app_path"
+codesign --verify --deep --strict "$app_path"
 signature_details="$(codesign --display --verbose=4 "$app_path" 2>&1)"
 team_identifier="$(sed -n 's/^TeamIdentifier=//p' <<< "$signature_details" | head -n 1)"
 if [[ "$team_identifier" == "not set" || -z "$team_identifier" ]]; then

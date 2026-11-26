@@ -17,7 +17,12 @@ ditto -c -k --keepParent "$stage/Poach Codex" "$release/Poach-Codex.zip"
 cp outputs/connectors/Poach.mcpb "$release/"
 cp outputs/runtime-cache/ffmpeg-8.1.3.tar.xz "$release/"
 cp scripts/bundle-runtime.sh "$release/"
+assets=("$app_archive" Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh)
+if [[ -n "${POACH_BUN_RELINK_ARCHIVE:-}" ]]; then
+  cp "$POACH_BUN_RELINK_ARCHIVE" "$release/Bun-relink-materials.tar"
+  assets+=(Bun-relink-materials.tar)
+fi
 (
   cd "$release"
-  shasum -a 256 "$app_archive" Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh > SHA256SUMS.txt
+  shasum -a 256 "${assets[@]}" > SHA256SUMS.txt
 )

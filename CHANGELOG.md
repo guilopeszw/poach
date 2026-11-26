@@ -4,7 +4,11 @@ User-visible changes are recorded here. **Unreleased** describes changes on `mai
 
 ## Unreleased
 
-No changes yet.
+### Changed
+
+- Reduce the macOS app bundle size by using Bun for inspection and MCP while retaining the existing connector executable path.
+- Share the bundled media libraries between FFmpeg and ffprobe to further reduce the macOS app bundle size.
+- Use a smaller icon in both connector downloads and share one packaged analysis core between the macOS app and its MCP server.
 
 ## 1.0.0 — 2026-11-22
 

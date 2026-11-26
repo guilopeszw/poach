@@ -109,7 +109,7 @@ When changing storage cleanup, verify it with temporary fixtures. Cover native r
 
 ### Bundled tools
 
-The Apple silicon beta includes official Node.js 22.23.4 and a local LGPL build of FFmpeg 8.1.3. `scripts/bundle-runtime.sh` verifies pinned archive digests, caches the build, and stages the executables and notices. Include the exact FFmpeg source archive and build script alongside beta downloads. Test inspection with only the bundled bin directory and macOS system directories on PATH. Both connector packages launch the app’s server from Applications or the current user’s Applications folder.
+The Apple silicon bundle includes the official Bun 1.4.0 executable and a local LGPL build of FFmpeg 8.1.3. `scripts/bundle-runtime.sh` verifies pinned digests, caches the build, and stages the executables and notices. The bundled `runtime/bin/node` launcher invokes Bun so existing connector configurations keep working. Node.js is still used by the development toolchain. Include the exact FFmpeg source archive and build script alongside beta downloads. Test inspection with only the bundled bin directory and macOS system directories on PATH. Both connector packages launch the app’s server from Applications or the current user’s Applications folder.
 
 ## Run the MCP server
 
@@ -169,6 +169,8 @@ Poach uses temporary access to the tab when you invoke the extension. It collect
 Browser `atMs` values are relative to the start of the browser session. For overlapping native recordings, add `videoOffsetMs` to estimate the position in the video. Poach automatically includes Chrome evidence when it overlaps a native recording in time. For screenshots, Poach offers the overlapping session for you to include. Timing alone cannot tell whether the screenshot shows that site. When an offset is available, `poach_read_moment` includes nearby browser observations. Compare those observations with the video to assess what changed.
 
 ## Package and verify a release (authorized maintainers)
+
+For a Bun-based release, pass the corresponding Bun and WebKit source and relinking archive as an absolute `POACH_BUN_RELINK_ARCHIVE` path when packaging. Publish the resulting `Bun-relink-materials.tar` with the other checksummed release assets.
 
 Run `bash scripts/package-beta.sh` to produce the app archive, Codex installer, Claude extension, FFmpeg source archive, build recipe, and `SHA256SUMS.txt` in `outputs/beta/`. Verify the packaged files with `cd outputs/beta && shasum -a 256 -c SHA256SUMS.txt`. Run `open outputs/Poach.app` to launch the local build. The capture shortcut is Command–Shift–P. For an installer upgrade check, register a copy of the old local marketplace in a temporary Codex home. Run the packaged installer twice and verify that Poach is enabled and points to the installed marketplace.
 
