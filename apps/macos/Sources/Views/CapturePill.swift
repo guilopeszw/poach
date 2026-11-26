@@ -648,30 +648,69 @@ private enum CapturePillTimerButton {
     }
 }
 
-/// ⏱ when the timer is off. With 3s or 10s chosen, the same open circle without the hand, and the
-/// seconds inside it (reference the user shared on Nov 26).
+/// ⏱ when the timer is off. With 3s or 10s chosen, the user's icons from
+/// `apps/macos/Assets/TimerIcons` (`timer-3.svg`, `timer-10.svg`), drawn from the same paths so they
+/// take the button's colour.
 private struct CaptureTimerGlyph: View {
     let timer: PoachCaptureTimer
+
+    /// The icons' 24-point grid, drawn at this size.
+    private static let size: CGFloat = 22
 
     var body: some View {
         if timer == .off {
             Image(systemName: "timer")
                 .font(.system(size: 15, weight: .semibold))
         } else {
+            let scale = Self.size / 24
             ZStack {
-                // Open at the top, between 12 and 1 o'clock, like the `timer` symbol.
-                Circle()
-                    .trim(from: 0, to: 0.9)
-                    .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
-                    .rotationEffect(.degrees(-54))
-                    .frame(width: 17, height: 17)
-                Text("\(timer.seconds)")
-                    .font(.system(size: timer.seconds >= 10 ? 8 : 9.5, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
+                TimerIconShape(part: .ring)
+                    .stroke(style: StrokeStyle(lineWidth: 1.65 * scale, lineCap: .round, lineJoin: .round))
+                TimerIconShape(part: timer == .ten ? .ten : .three)
+                    .stroke(style: StrokeStyle(lineWidth: 1.05 * scale, lineCap: .round, lineJoin: .round))
             }
-            .frame(width: 20, height: 20)
+            .frame(width: Self.size, height: Self.size)
             .accessibilityHidden(true)
         }
+    }
+}
+
+/// The paths of `timer-3.svg` and `timer-10.svg` (24 × 24 viewBox), scaled to the frame.
+private struct TimerIconShape: Shape {
+    enum Part { case ring, three, ten }
+    let part: Part
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: y) }
+        switch part {
+        case .ring:
+            // M 12 4.5 V 2.5 A 9.5 9.5 0 1 1 5.1 5.5: a stem at the top, then the circle clockwise
+            // around to the upper left, leaving it open between the stem and about 10:30.
+            p.move(to: pt(12, 4.5))
+            p.addLine(to: pt(12, 2.5))
+            p.addArc(center: pt(12, 12), radius: 9.5, startAngle: .degrees(-90),
+                     endAngle: .radians(atan2(5.5 - 12, 5.1 - 12)), clockwise: false)
+        case .three:
+            p.move(to: pt(9.8, 9.1))
+            p.addCurve(to: pt(14.6, 9.6), control1: pt(10.1, 7.2), control2: pt(14.6, 7.1))
+            p.addCurve(to: pt(11.7, 11.8), control1: pt(14.6, 11), control2: pt(13.1, 11.8))
+            p.addCurve(to: pt(15, 14.2), control1: pt(13.5, 11.8), control2: pt(15, 12.6))
+            p.addCurve(to: pt(9.3, 14.9), control1: pt(15, 17), control2: pt(10.1, 17.3))
+        case .ten:
+            p.move(to: pt(6.8, 9.7))
+            p.addLine(to: pt(9.1, 8))
+            p.addLine(to: pt(9.1, 16))
+            p.move(to: pt(14.4, 16.1))
+            p.addCurve(to: pt(14.4, 7.9), control1: pt(10.9, 16.1), control2: pt(10.9, 7.9))
+            p.addCurve(to: pt(14.4, 16.1), control1: pt(17.9, 7.9), control2: pt(17.9, 16.1))
+            p.closeSubpath()
+            p.move(to: pt(12.1, 14.6))
+            p.addLine(to: pt(16.7, 9.4))
+        }
+        let scale = min(rect.width, rect.height) / 24
+        return p.applying(CGAffineTransform(scaleX: scale, y: scale)
+            .concatenating(CGAffineTransform(translationX: rect.minX, y: rect.minY)))
     }
 }
 
