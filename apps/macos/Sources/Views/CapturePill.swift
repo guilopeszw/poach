@@ -206,7 +206,6 @@ struct CapturePill: View {
             selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
             onCommit: { timerExpanded = false }
         )
-        .padding(.horizontal, 8)
         .focusable()
         .focused($optionsFocused)
         .focusEffectDisabled()
@@ -381,9 +380,9 @@ extension CapturePill {
     private var nativeOptions: some View {
         CaptureTimerLensPicker(
             selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
+            whiteLabels: true,
             onCommit: { timerExpanded = false }
         )
-        .padding(.horizontal, 8)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
         .focusable()
         .focused($optionsFocused)
@@ -718,50 +717,42 @@ extension TimerOptionsCollapse: ViewModifier {
 /// with a spring. The lens is only a bright rim, so the labels show through it unchanged.
 private struct CaptureTimerLensPicker: View {
     @Binding var selection: PoachCaptureTimer
+    /// White labels, like the unified pill's icons; dark ones on the custom pill's light glass.
+    var whiteLabels = false
     let onCommit: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// `.custom` forces light; `.unified` follows the system, so the track, labels and rim adapt.
+    /// `.custom` forces light; `.unified` follows the system, so the rim adapts.
     @Environment(\.colorScheme) private var colorScheme
     /// Pointer x while pressed; `nil` when the lens rests on `selection`.
     @State private var pressedX: CGFloat?
     @Environment(\.timerLensPreviewX) private var previewX
     private var dragX: CGFloat? { pressedX ?? previewX }
 
-
-    /// At rest the lens is a pill inside the 48 pt pill; pressed, it grows into a wider capsule
-    /// that stands out of the pill above and below (reference shared on Nov 26).
-    private static let restingHeight: CGFloat = 36
-    private static let restingExtraWidth: CGFloat = 8
-    private static let liftedWidthRatio: CGFloat = 2
-    /// The lifted lens is taller than the 48 pt pill so it overlaps the pill's edges.
-    private static let liftedHeight: CGFloat = 58
-
     var body: some View {
         GeometryReader { geometry in
-            let width = geometry.size.width
-            let count = CGFloat(PoachCaptureTimer.allCases.count)
-            let segment = width / count
+            let layout = CaptureTimerLensLayout(pillWidth: geometry.size.width, pillHeight: geometry.size.height)
             let lifted = dragX != nil
-            let lensWidth = lifted ? segment * Self.liftedWidthRatio : segment + Self.restingExtraWidth
-            // While pressed the lens follows the pointer; at rest it centres on the choice.
-            // At the ends the lens may overhang the pill, as a lifted glass lens does.
-            let centre = dragX.map { min(max($0, segment / 2), width - segment / 2) }
-                ?? segment * (CGFloat(selection.index) + 0.5)
-
-            let lensHeight = lifted ? Self.liftedHeight : Self.restingHeight
+            let size = lifted ? layout.liftedSize : layout.restingSize
+            // While pressed the lens follows the pointer, held between the end positions where it
+            // is concentric with the pill; at rest it sits on the choice.
+            let centre = dragX.map { CGFloat(layout.clampedCentre(Double($0))) }
+                ?? CGFloat(layout.centre(of: selection.index))
 
             ZStack(alignment: .topLeading) {
-                // The lens draws its refraction on every system. A clear Liquid Glass lens was tried on
-                // macOS 26 and dropped: over dark backgrounds it became an opaque grey patch.
+                // A clear Liquid Glass lens was tried on macOS 26 and dropped: over dark backgrounds
+                // it became an opaque grey patch.
                 lens(lifted: lifted)
-                    .frame(width: lensWidth, height: lensHeight)
+                    .frame(width: CGFloat(size.width), height: CGFloat(size.height))
                     .position(x: centre, y: geometry.size.height / 2)
 
                 // The labels show through the clear lens unchanged, neighbours included, as in the
                 // reference. A drawn refraction (magnified labels inside the lens) was dropped: over
                 // the wide lifted lens it pushed the neighbouring labels out and left fragments.
-                labels(segment: segment, height: geometry.size.height)
+                ForEach(PoachCaptureTimer.allCases) { option in
+                    label(option)
+                        .position(x: CGFloat(layout.centre(of: option.index)), y: geometry.size.height / 2)
+                }
             }
             .allowsHitTesting(false)
             .contentShape(Rectangle())
@@ -769,14 +760,14 @@ private struct CaptureTimerLensPicker: View {
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
                         let x = value.location.x
-                        let option = PoachCaptureTimer.option(atX: Double(x), trackWidth: Double(width))
+                        let option = PoachCaptureTimer.allCases[layout.index(atX: Double(x))]
                         withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
                             pressedX = x
                             selection = option
                         }
                     }
                     .onEnded { value in
-                        let option = PoachCaptureTimer.option(atX: Double(value.location.x), trackWidth: Double(width))
+                        let option = PoachCaptureTimer.allCases[layout.index(atX: Double(value.location.x))]
                         withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.68)) {
                             selection = option
                             pressedX = nil
@@ -800,16 +791,16 @@ private struct CaptureTimerLensPicker: View {
         .accessibilityAction { onCommit() }
     }
 
-    private func labels(segment: CGFloat, height: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            ForEach(PoachCaptureTimer.allCases) { option in
-                Text(option.shortTitle)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(option == selection ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .frame(width: segment, height: height)
-            }
-        }
-        .frame(height: height)
+    private func label(_ option: PoachCaptureTimer) -> some View {
+        let chosen = option == selection
+        return Text(option.shortTitle)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(whiteLabels
+                ? AnyShapeStyle(Color.white.opacity(chosen ? 1 : 0.6))
+                : AnyShapeStyle(chosen ? Color(white: 0.09) : Color(white: 0.45)))
+            // White text needs a soft edge to stay legible over light backgrounds.
+            .shadow(color: .black.opacity(whiteLabels ? 0.35 : 0), radius: 1.5, x: 0, y: 0.5)
+            .fixedSize()
     }
 
     /// A thin rim that catches the light at the top-left and bottom-right. On the light pill a
