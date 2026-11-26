@@ -109,6 +109,7 @@ struct CapturePill: View {
     @AppStorage(PoachCaptureTimer.storageKey) private var storedSeconds = PoachCaptureTimer.off.rawValue
     @AppStorage(CapturePillStyle.storageKey) private var storedStyle = CapturePillStyle.custom.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.capturePillExternalGlass) private var externalGlass
     @FocusState private var optionsFocused: Bool
     @Namespace private var glassSpace
 
@@ -133,7 +134,7 @@ struct CapturePill: View {
     private var style: CapturePillStyle { CapturePillStyle(rawValue: storedStyle) ?? .custom }
 
     var body: some View {
-        if #available(macOS 26.0, *), style != .custom {
+        if #available(macOS 26.0, *), externalGlass || style != .custom {
             nativeBody
         } else {
             customBody
@@ -322,7 +323,7 @@ extension CapturePill {
                         // in it can clip the lens while it lifts out of the pill.
                         Color.clear
                             .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-                            .glassEffect(.regular, in: Capsule())
+                            .glassEffect(externalGlass ? .identity : .regular, in: Capsule())
                             .glassEffectID("timer", in: glassSpace)
                     } else {
                         nativeButtons
@@ -400,7 +401,7 @@ extension CapturePill {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : Self.dimmed)
-        .glassEffect(.regular.interactive(enabled), in: Capsule())
+        .glassEffect(externalGlass ? .identity : .regular.interactive(enabled), in: Capsule())
         .glassEffectUnion(id: "pill", namespace: glassSpace)
         .glassEffectID(id, in: glassSpace)
     }
@@ -424,31 +425,59 @@ extension CapturePill {
     }
 }
 
-/// The selected area's outline as a band `width` wide, centred on the area's rounded edge.
-struct AreaOutlineRing: Shape {
-    let area: CGRect
-    var width: CGFloat = 6
+/// Removes the centre *after* rendering glass. The optical shape remains a convex rounded
+/// rectangle, without the extra inward-facing refraction a ring-shaped glass material creates.
+struct CaptureGlassPerimeterMask: View {
+    let area: CGRect?
+    var pill: CGRect? = nil
+    private let opticalWidth: CGFloat = 12
 
-    func path(in rect: CGRect) -> Path {
-        let radius = CapturePillLayout.areaCornerRadius(for: area)
-        let half = width / 2
-        let outer = Path(roundedRect: area.insetBy(dx: -half, dy: -half), cornerRadius: radius + half, style: .continuous)
-        let inner = Path(roundedRect: area.insetBy(dx: half, dy: half), cornerRadius: max(0, radius - half), style: .continuous)
-        return outer.subtracting(inner)
+    var body: some View {
+        Canvas { context, size in
+            var path = Path(CGRect(origin: .zero, size: size))
+            if let area {
+                let inset = min(opticalWidth, min(area.width, area.height) / 4)
+                let inner = area.insetBy(dx: inset, dy: inset)
+                if inner.width > 0, inner.height > 0 {
+                    var cutout = Path(roundedRect: inner,
+                                      cornerRadius: max(0, CapturePillLayout.areaCornerRadius(for: area) - inset),
+                                      style: .continuous)
+                    if let pill { cutout = cutout.subtracting(Capsule().path(in: pill)) }
+                    path.addPath(cutout)
+                }
+            }
+            // Feather the native fallback as well; a one-point blur exposes the cutout edge.
+            context.addFilter(.blur(radius: min(8, area.map { min($0.width, $0.height) / 8 } ?? 8)))
+            context.fill(path, with: .color(.white), style: FillStyle(eoFill: true))
+        }
     }
 }
 
-/// macOS 26: the selected area's outline as a ring of Liquid Glass, in the overlay's coordinates.
+/// The surface is left unmasked while participating in the drop's container; that container
+/// applies the cutout to the whole liquid union, preserving its neck at the selection's edge.
 @available(macOS 26.0, *)
-struct AreaOutlineGlass: View {
+struct CaptureAreaGlass: View {
     let area: CGRect
+    var inLiquidUnion = false
+    @Environment(\.captureGlassBackdrop) private var backdrop
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .glassEffect(.regular, in: AreaOutlineRing(area: area))
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        Group {
+            if let backdrop, backdrop.isReady, !reduceTransparency, contrast != .increased, CaptureLiquidGlass.isSupported {
+                CaptureLiquidGlass(backdrop: backdrop, area: area)
+            } else {
+                Color.clear
+                    .frame(width: area.width, height: area.height)
+                    .glassEffect(.clear, in: RoundedRectangle(
+                        cornerRadius: CapturePillLayout.areaCornerRadius(for: area), style: .continuous))
+                    .position(x: area.midX, y: area.midY)
+                    .mask { CaptureGlassPerimeterMask(area: inLiquidUnion ? nil : area) }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -464,21 +493,16 @@ struct CapturePillDropIn<Pill: View>: View {
     let origin: CGPoint
     /// The pill's final frame, in the parent's coordinates.
     let frame: CGRect
-    /// The selected area, when the outline is drawn here as a glass ring (macOS 26) so the pill
-    /// can leave it as one shape. `nil` keeps the bead on the outline.
+    /// The clear selection surface the controls detach from. `nil` is used by pill-only previews.
     var outline: CGRect? = nil
     let pill: (Double) -> Pill
 
     @State private var start = Date()
     @State private var finished = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(CapturePillStyle.storageKey) private var storedStyle = CapturePillStyle.custom.rawValue
-
-    /// macOS 26: the drop is Liquid Glass, and the glass container melts it into the outline.
-    private var usesGlass: Bool {
-        if #available(macOS 26.0, *) { true } else { false }
-    }
-    private var duration: Double { usesGlass ? Self.glassTotal : Self.total }
+    @Environment(\.captureGlassBackdrop) private var backdrop
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     // The glass drop (after a reference the user recorded on Nov 26): a bead of glass swells on
     // the outline and a blob of glass leaves it on a bridge that stretches, thins and snaps, then
@@ -499,25 +523,27 @@ struct CapturePillDropIn<Pill: View>: View {
     private static var dropRadius: CGFloat { 8 }
 
     var body: some View {
-        // Once landed the pill is drawn directly: no timeline and no mask. A screen recording showed
-        // the pressed timer lens clipped to the pill's capsule while it animated, in the real overlay.
-        if reduceMotion || finished {
-            ZStack(alignment: .topLeading) {
-                if #available(macOS 26.0, *), let outline { AreaOutlineGlass(area: outline) }
-                pill(1).position(x: frame.midX, y: frame.midY)
+        if #available(macOS 26.0, *) {
+            // Keep the same container, glass and controls alive after landing. Replacing the
+            // blob with a second pill would change material and reset timer focus at the seam.
+            TimelineView(.animation(paused: finished || reduceMotion)) { timeline in
+                glassContent(at: reduceMotion || finished ? Self.glassTotal : timeline.date.timeIntervalSince(start))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task {
+                guard !reduceMotion else { return }
+                start = Date()
+                do { try await Task.sleep(for: .seconds(Self.glassTotal)) } catch { return }
+                finished = true
+            }
+        } else if reduceMotion || finished {
+            pill(1).position(x: frame.midX, y: frame.midY)
         } else {
             TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSince(start)
-                if #available(macOS 26.0, *) {
-                    glassContent(at: t)
-                } else {
-                    content(at: t)
-                }
+                content(at: t)
             }
             .task {
-                try? await Task.sleep(for: .seconds(duration + 0.05))
+                do { try await Task.sleep(for: .seconds(Self.total + 0.05)) } catch { return }
                 finished = true
             }
         }
@@ -572,67 +598,65 @@ struct CapturePillDropIn<Pill: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// macOS 26. The bead and the blob are glass in one `GlassEffectContainer`, so the system draws
-    /// the smooth bridge between them while they are close and lets it snap as the bead shrinks.
-    /// Once the blob has the pill's size and place, the real pill replaces it (same capsule, same
-    /// glass) and its buttons fade in.
+    /// One optical surface for both the selection and the departing capsule. Metal provides
+    /// the reference's RGB dispersion; native glass is the fallback when sampling is unavailable.
     @available(macOS 26.0, *)
-    @ViewBuilder
     private func glassContent(at t: Double) -> some View {
         let travelStart = Self.glassEmerge
         let landed = travelStart + Self.glassTravel + Self.glassSettle
-        ZStack(alignment: .topLeading) {
-            if t < landed {
-                let emerge = Self.easeInOut(t / Self.glassEmerge)
-                let travel = Self.easeInOut((t - travelStart) / Self.glassTravel)
-                // The blob leaves small and round on its bridge, and only grows into the pill over
-                // the second half of the travel and the settle, on a spring that overshoots a little.
-                let growStart = travelStart + Self.glassTravel * 0.5
-                let grow = Self.spring((t - growStart) / (Self.glassTravel * 0.5 + Self.glassSettle), damping: 6, frequency: 7)
-                let blob = 24 * emerge
-                let centre = CGPoint(x: origin.x + (frame.midX - origin.x) * travel,
-                                     y: origin.y + (frame.midY - origin.y) * travel)
-                // Without a glass outline, a bead holds the blob on the outline, then shrinks so the
-                // bridge thins and snaps. With one, the blob hangs from the outline itself, and the
-                // melting distance closes instead, so the bridge snaps and the pill lands apart.
-                let release = Self.easeInOut((t - travelStart - 0.18) / 0.26)
-                let bead = emerge * (1 - release)
-                GlassEffectContainer(spacing: outline == nil ? Self.glassSpacing : Self.glassSpacing * (1 - release)) {
-                    ZStack(alignment: .topLeading) {
-                        if let outline {
-                            AreaOutlineGlass(area: outline)
-                        } else {
-                            dropGlass
-                                .frame(width: 88 * bead, height: 14 * bead)
-                                .position(origin)
+        let emerge = Self.easeInOut(t / Self.glassEmerge)
+        let travel = Self.easeInOut((t - travelStart) / Self.glassTravel)
+        let growStart = travelStart + Self.glassTravel * 0.45
+        let grow = Self.spring((t - growStart) / (landed - growStart), damping: 6, frequency: 7)
+        let blob = max(0.01, 24 * emerge)
+        let centre = CGPoint(x: origin.x + (frame.midX - origin.x) * travel,
+                             y: origin.y + (frame.midY - origin.y) * travel)
+        let release = Self.easeInOut((t - travelStart - 0.16) / 0.28)
+        let controls = min(max((t - landed + 0.06) / Self.fade, 0), 1)
+        let blobFrame = CGRect(x: centre.x - (blob + (frame.width - blob) * grow) / 2,
+                               y: centre.y - (blob + (frame.height - blob) * grow) / 2,
+                               width: max(0.01, blob + (frame.width - blob) * grow),
+                               height: max(0.01, blob + (frame.height - blob) * grow))
+        return ZStack(alignment: .topLeading) {
+            Group {
+                if let backdrop, backdrop.isReady, !reduceTransparency, contrast != .increased, CaptureLiquidGlass.isSupported {
+                    CaptureLiquidGlass(backdrop: backdrop, area: outline, pill: blobFrame,
+                                       connection: Self.glassSpacing * (1 - release))
+                } else {
+                    GlassEffectContainer(spacing: Self.glassSpacing * (1 - release)) {
+                        ZStack(alignment: .topLeading) {
+                            if let outline {
+                                CaptureAreaGlass(area: outline, inLiquidUnion: true)
+                                    .environment(\.captureGlassBackdrop, nil)
+                            } else {
+                                Color.clear
+                                    .frame(width: max(0.01, 88 * emerge * (1 - release)),
+                                           height: max(0.01, 14 * emerge * (1 - release)))
+                                    .glassEffect(.clear, in: Capsule())
+                                    .position(origin)
+                            }
+                            Color.clear
+                                .frame(width: max(0.01, blob + (frame.width - blob) * grow),
+                                       height: max(0.01, blob + (frame.height - blob) * grow))
+                                .glassEffect(.clear, in: Capsule())
+                                .position(centre)
                         }
-                        dropGlass
-                            .frame(width: blob + (frame.width - blob) * grow,
-                                   height: blob + (frame.height - blob) * grow)
-                            .position(centre)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .mask { CaptureGlassPerimeterMask(area: outline, pill: blobFrame) }
                 }
-                .allowsHitTesting(false)
-            } else {
-                if let outline { AreaOutlineGlass(area: outline) }
-                pill(min(max((t - landed) / Self.fade, 0), 1))
-                    .position(x: frame.midX, y: frame.midY)
             }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+            // Only the controls fade. The glass is never masked, so the timer's lifted lens
+            // can continue to overhang the capsule after the drop has settled.
+            pill(controls)
+                .environment(\.capturePillExternalGlass, true)
+                .environment(\.colorScheme, .dark)
+                .position(x: frame.midX, y: frame.midY)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    /// The same glass as the pill it becomes: adaptive for the unified pill, light for the custom one.
-    @available(macOS 26.0, *)
-    @ViewBuilder
-    private var dropGlass: some View {
-        if CapturePillStyle(rawValue: storedStyle) == .unified {
-            Color.clear.glassEffect(.regular, in: Capsule())
-        } else {
-            Color.clear.glassEffect(.regular, in: Capsule())
-                .environment(\.colorScheme, .light)
-        }
     }
 
     /// The outline segment and the drop, blurred and cut at half opacity so they melt together.
@@ -684,9 +708,13 @@ struct CapturePillDropIn<Pill: View>: View {
 /// what is behind the pill (the desktop for the pill's own panels, the window content inside
 /// the window chooser). Earlier systems keep `CapturePillLegacyGlass`.
 struct CapturePillGlass: View {
+    @Environment(\.capturePillExternalGlass) private var externalGlass
+
     var body: some View {
         Group {
-            if #available(macOS 26.0, *) {
+            if externalGlass {
+                Color.clear
+            } else if #available(macOS 26.0, *) {
                 // Light glass even in Dark Mode or over dark windows, so the dark icons stay legible.
                 Color.clear.glassEffect(.regular, in: Capsule())
                     .environment(\.colorScheme, .light)
@@ -767,6 +795,10 @@ private struct CapturePillBlur: NSViewRepresentable {
     }
 }
 
+private struct CapturePillExternalGlassKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private struct CapturePillBlendingKey: EnvironmentKey {
     static let defaultValue = NSVisualEffectView.BlendingMode.behindWindow
 }
@@ -776,6 +808,12 @@ private struct TimerLensPreviewKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
+    /// The area drop-in owns the capsule's glass; the pill supplies controls without a second material.
+    var capturePillExternalGlass: Bool {
+        get { self[CapturePillExternalGlassKey.self] }
+        set { self[CapturePillExternalGlassKey.self] = newValue }
+    }
+
     /// Design lab only: holds the timer lens as if pressed at this x, to inspect the lifted lens.
     var timerLensPreviewX: CGFloat? {
         get { self[TimerLensPreviewKey.self] }
@@ -901,6 +939,7 @@ private struct RefractedPillGlass: View {
             Color.clear.glassEffect(.regular, in: Capsule())
         } else {
             CapturePillGlass()
+                .environment(\.capturePillExternalGlass, false)
         }
     }
 }

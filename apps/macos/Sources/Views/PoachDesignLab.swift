@@ -53,7 +53,8 @@ struct PoachDesignLab: View {
         }
     }
 
-    @State private var surface = Surface(rawValue: UserDefaults.standard.string(forKey: "poachDesignSurface") ?? "") ?? .editor
+    @State private var surface = Surface(rawValue: ProcessInfo.processInfo.environment["POACH_DESIGN_SURFACE"]
+        ?? UserDefaults.standard.string(forKey: "poachDesignSurface") ?? "") ?? .editor
     @State private var dataset = Dataset(rawValue: UserDefaults.standard.string(forKey: "poachDesignDataset") ?? "") ?? .demo
     @State private var width = Int(UserDefaults.standard.string(forKey: "poachDesignWidth") ?? "") ?? 800
     private let heightLimit = UserDefaults.standard.string(forKey: "poachDesignHeight").flatMap(Int.init)
@@ -67,6 +68,8 @@ struct PoachDesignLab: View {
     @State private var pillLensPress: CGFloat?
     /// Re-keys the drop specimen so the area pill's entrance replays.
     @State private var dropReplay = 0
+    @State private var dropTimerExpanded = false
+    @State private var dropGlassBackdrop = CaptureGlassBackdrop()
     @AppStorage(PoachCaptureTimer.storageKey) private var labTimerSeconds = PoachCaptureTimer.off.rawValue
     @AppStorage(CapturePillStyle.storageKey) private var pillStyle = CapturePillStyle.custom.rawValue
 
@@ -206,14 +209,12 @@ struct PoachDesignLab: View {
         let area = CGRect(x: 90, y: 50, width: 300, height: 180)
         let frame = CaptureTargetGeometry.attachedPillFrame(for: area, pillSize: CapturePillLayout.size,
                                                              in: CGRect(origin: .zero, size: size))
-        let origin = CGPoint(x: frame.midX, y: area.maxY)
+        let origin = CaptureTargetGeometry.pillAttachmentPoint(
+            for: area, pillFrame: frame, cornerRadius: CapturePillLayout.areaCornerRadius(for: area))
         let radius = CapturePillLayout.areaCornerRadius(for: area)
         let glass: Bool = { if #available(macOS 26.0, *) { true } else { false } }()
         return ZStack(alignment: .topLeading) {
-            LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
-            RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color(red: 0.1, green: 0.1, blue: 0.12))
-                .frame(width: area.width, height: area.height)
-                .offset(x: area.minX, y: area.minY)
+            dropBackground
             // The selection overlay's dimming around the rounded area.
             Canvas { context, canvas in
                 var mask = Path(CGRect(origin: .zero, size: canvas))
@@ -226,19 +227,42 @@ struct PoachDesignLab: View {
                     .offset(x: area.minX, y: area.minY)
             }
             CapturePillDropIn(origin: origin, frame: frame, outline: glass ? area : nil) { opacity in
-                CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(false),
+                CapturePill(phase: .selecting(canStart: true), timerExpanded: $dropTimerExpanded,
                             onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
             }
             .id(dropReplay)
         }
         .frame(width: size.width, height: size.height)
         .clipped()
+        .environment(\.captureGlassBackdrop, dropGlassBackdrop)
         .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+            let renderer = ImageRenderer(content: dropBackground)
+            renderer.scale = 2
+            if let image = renderer.cgImage { dropGlassBackdrop.useFixture(image) }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button("Replay drop") {
+                dropTimerExpanded = false
                 dropReplay += 1
             }
+            .buttonStyle(.bordered)
+            .padding(10)
         }
+    }
+
+    /// The same synthetic scene is displayed and supplied to Metal, entirely in memory.
+    private var dropBackground: some View {
+        ZStack {
+            LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(spacing: 12) {
+                ForEach(0..<8) { row in
+                    Text(row.isMultiple(of: 2) ? "Glass · Poach · Glass" : "0123456789 · 0123456789")
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .frame(width: 480, height: 360)
     }
 
     private var videoURL: URL {

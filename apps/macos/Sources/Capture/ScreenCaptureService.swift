@@ -560,6 +560,11 @@ private struct RecordingAreaShadowView: View {
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .overlay {
+                if #available(macOS 26.0, *) {
+                    CaptureAreaGlass(area: area)
+                }
+            }
             .allowsHitTesting(false)
         }
         .background(.clear)
