@@ -747,6 +747,17 @@ private struct CaptureTimerLensPicker: View {
     @Environment(\.timerLensPreviewX) private var previewX
     private var dragX: CGFloat? { pressedX ?? previewX }
 
+    /// How much the lifted lens magnifies the pill's edge under it. Small enough that the bent
+    /// edge stays inside the lens at the ends too (it overhangs the pill by 6 pt).
+    private static let refraction: CGFloat = 1.12
+    /// A white edge with a warm fringe just outside and a blue one just inside, softened and
+    /// added together so they read as dispersed light rather than stripes.
+    private static let prismBands: [(color: Color, spread: CGFloat)] = [
+        (Color(red: 1, green: 0.45, blue: 0.2), 1.015),
+        (.white, 1),
+        (Color(red: 0.3, green: 0.6, blue: 1), 0.985)
+    ]
+
     var body: some View {
         GeometryReader { geometry in
             let layout = CaptureTimerLensLayout(pillWidth: geometry.size.width, pillHeight: geometry.size.height)
@@ -763,6 +774,37 @@ private struct CaptureTimerLensPicker: View {
                 lens(lifted: lifted)
                     .frame(width: CGFloat(size.width), height: CGFloat(size.height))
                     .position(x: centre, y: geometry.size.height / 2)
+
+                if lifted {
+                    // Refraction of the pill under the lifted lens: its edge, magnified about the
+                    // lens's centre and seen only through the lens, so it bends outward the way the
+                    // track does in the user's reference. The labels above are left unrefracted.
+                    let anchor = UnitPoint(x: centre / max(geometry.size.width, 1), y: 0.5)
+                    ZStack {
+                        Capsule()
+                            .fill(Color.primary.opacity(0.1))
+                            .scaleEffect(Self.refraction, anchor: anchor)
+                        // Prism dispersion, after the "prism warp" glass in the user's Figma
+                        // reference: each colour bends by a slightly different amount, so the
+                        // bent edge splits into a red, a green and a blue fringe.
+                        ForEach(Self.prismBands.indices, id: \.self) { i in
+                            let band = Self.prismBands[i]
+                            Capsule()
+                                .strokeBorder(band.color.opacity(colorScheme == .dark ? 0.7 : 0.6), lineWidth: 1.2)
+                                .scaleEffect(Self.refraction * band.spread, anchor: anchor)
+                                .blur(radius: 0.7)
+                                .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+                        }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                        .mask {
+                            Capsule()
+                                .frame(width: CGFloat(size.width), height: CGFloat(size.height))
+                                .position(x: centre, y: geometry.size.height / 2)
+                        }
+                        .transition(.opacity)
+                }
 
                 // The labels show through the clear lens unchanged, neighbours included, as in the
                 // reference. A drawn refraction (magnified labels inside the lens) was dropped: over
@@ -821,12 +863,13 @@ private struct CaptureTimerLensPicker: View {
             .fixedSize()
     }
 
-    /// The lens's edge, after the "crystal" glass in the user's Figma reference (Community-X): a
-    /// solid white border. On the light pill a grey hairline outside it keeps the lens visible.
+    /// The lifted lens's edge, after the "prism warp" glass in the user's Figma reference
+    /// (Community-X): a 1 pt border of 65 % white. On the light pill a grey hairline outside it
+    /// keeps the lens visible.
     @ViewBuilder private var lensRim: some View {
         let dark = colorScheme == .dark
         ZStack {
-            Capsule().strokeBorder(Color.white.opacity(dark ? 0.85 : 1), lineWidth: 1.25)
+            Capsule().strokeBorder(Color.white.opacity(0.65), lineWidth: 1)
             if !dark {
                 Capsule().strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5)
                     .padding(-0.5)
@@ -841,11 +884,10 @@ private struct CaptureTimerLensPicker: View {
         return Color(white: colorScheme == .dark ? 0.4 : 0.5)
     }
 
-    /// Lifted, the "crystal" glass scaled from the reference's 320 px button (about 1/5): a 6 %
-    /// white fill lit from inside, a bright glow along the bottom and a crisp one under the top
-    /// edge, its white border and its two-layer drop shadow. The reference's refraction is left out:
-    /// a drawn one pushed the neighbouring labels out of the lens. Both looks are layered and faded,
-    /// so they change with the lens's spring.
+    /// Lifted, the "prism warp" glass of the reference: clear, with its thin border and the
+    /// two-layer drop shadow of the reference's buttons scaled to the lens (about 1/5). The prism's
+    /// refraction is drawn on the pill's edge under the lens, not on the labels. Both looks are
+    /// layered and faded, so they change with the lens's spring.
     private func lens(lifted: Bool) -> some View {
         ZStack {
             Capsule()
@@ -853,11 +895,7 @@ private struct CaptureTimerLensPicker: View {
                 .shadow(color: .black.opacity(0.12), radius: 1.5, x: 0, y: 0.5)
                 .opacity(lifted ? 0 : 1)
             Capsule()
-                .fill(
-                    Color.white.opacity(0.06)
-                        .shadow(.inner(color: .white.opacity(0.6), radius: 2, x: 0, y: -1.2))
-                        .shadow(.inner(color: .white.opacity(0.9), radius: 1, x: 0, y: 0.6))
-                )
+                .fill(Color.white.opacity(0.001))
                 .overlay { lensRim }
                 .shadow(color: .black.opacity(0.12), radius: 1.4, x: 0, y: 1.6)
                 .shadow(color: .black.opacity(0.18), radius: 7, x: 0, y: 8)
