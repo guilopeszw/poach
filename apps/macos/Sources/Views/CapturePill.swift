@@ -18,12 +18,10 @@ enum CapturePillLayout {
     /// Room around the pill in its own panels, so the timer lens and the shadow are not clipped.
     static let panelMargin: CGFloat = 16
 
-    /// Bottom corner of `screen`, on the side chosen in Settings (`windowEdge`).
+    /// Bottom centre of `screen`, where the selection controls sit since `507bd90`.
     @MainActor
     static func frame(on screen: NSScreen) -> CGRect {
-        let left = UserDefaults.standard.string(forKey: "windowEdge") == "left"
-        let x = left ? screen.frame.minX + sideInset : screen.frame.maxX - size.width - sideInset
-        return CGRect(x: x, y: screen.frame.minY + bottomInset, width: size.width, height: size.height)
+        CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.minY + bottomInset, width: size.width, height: size.height)
     }
 
     /// `frame(on:)` grown by `panelMargin`; the pill stays centred in it.

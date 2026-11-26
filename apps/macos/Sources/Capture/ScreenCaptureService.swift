@@ -73,10 +73,14 @@ struct ScreenCaptureRecording {
 
 @available(macOS 15.0, *)
 @MainActor
-final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
+final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContentSharingPickerObserver {
+    private static let poachBundleID = Bundle.main.bundleIdentifier ?? "dev.poach.app"
     private var captureSizePoints = CGSize.zero
     private var stream: SCStream?
     private var outputURL: URL?
+    private var pickerContinuation: CheckedContinuation<ContentFilterBox, Error>?
+    private var activePicker: SCContentSharingPicker?
+    var onPickerStateChange: ((Bool) -> Void)?
     private var finishContinuation: CheckedContinuation<Void, Error>?
     private var didFinish = false
     private var recordingError: Error?
@@ -89,6 +93,9 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
     /// The countdown overlay is gone before this returns, so it never appears in the capture.
     private func selectTarget(mode: PoachCaptureMode, screenshot: Bool) async throws
         -> (filter: SCContentFilter, selectedRegion: SelectedRegion?) {
+        if mode == .window {
+            return (try await selectWindow(screenshot: screenshot), nil)
+        }
         let target = try await CaptureSelectionWindowController.shared.select(mode: mode, screenshot: screenshot)
         if let (outline, screen) = Self.outline(for: target) {
             var isArea = false
@@ -108,13 +115,28 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
             return (try Self.displayFilter(displayID: region.displayID, content: content), region)
         case .display(let displayID):
             return (try Self.displayFilter(displayID: displayID, content: content), nil)
-        case .window(let candidate):
-            // Minimized, hidden or ordered-out windows still exist but would record nothing.
-            guard let window = content.windows.first(where: { $0.windowID == candidate.windowID && $0.isOnScreen }) else {
-                throw ScreenCaptureError.selectionFailed("That window is no longer available.")
-            }
-            return (SCContentFilter(desktopIndependentWindow: window), nil)
         }
+    }
+
+    /// Window mode: the preview grid picks the window, then the optional countdown runs on it.
+    private func selectWindow(screenshot: Bool) async throws -> SCContentFilter {
+        let picked = try await chooseWindowFilter(screenshot: screenshot)
+        let (outline, screen) = Self.outline(forWindowFrame: picked.window?.frame)
+        try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen, screenshot: screenshot)
+        // The system-picker fallback has no window list to check against.
+        guard let chosen = picked.window, PoachCaptureTimer.current != .off else { return picked.filter }
+        // The countdown leaves time to close or minimize the window; such a window would record nothing.
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        } catch {
+            if Self.isPermissionDenied(error) { throw ScreenCaptureError.permissionDenied }
+            throw error
+        }
+        guard let window = content.windows.first(where: { $0.windowID == chosen.windowID && $0.isOnScreen }) else {
+            throw ScreenCaptureError.selectionFailed("That window is no longer available.")
+        }
+        return SCContentFilter(desktopIndependentWindow: window)
     }
 
     /// A display capture that leaves out Poach's own windows.
@@ -122,11 +144,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
             throw ScreenCaptureError.noDisplay
         }
-        let poachApplications = content.applications.filter {
-            $0.processID == ProcessInfo.processInfo.processIdentifier || $0.bundleIdentifier == Bundle.main.bundleIdentifier
-        }
-        guard !poachApplications.isEmpty else { throw ScreenCaptureError.selectionFailed("Poach could not exclude its windows from this display.") }
-        return SCContentFilter(display: display, excludingApplications: poachApplications, exceptingWindows: [])
+        return try displayFilter(for: display, in: content)
     }
 
     /// The target's outline in AppKit global coordinates and the screen that shows its countdown.
@@ -138,13 +156,20 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         case .display(let displayID):
             guard let screen = screen(for: displayID) else { return nil }
             return (screen.frame, screen)
-        case .window(let candidate):
-            guard let primary = NSScreen.screens.first else { return nil }
-            let rect = CaptureTargetGeometry.appKitRect(fromGlobalTopLeft: candidate.frame, primaryScreenHeight: primary.frame.height)
-            let center = CGPoint(x: rect.midX, y: rect.midY)
-            let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? primary
-            return (rect, screen)
         }
+    }
+
+    /// A window frame (global top-left coordinates) as a countdown outline. Without a frame,
+    /// the countdown is centred on the screen with the pointer.
+    private static func outline(forWindowFrame frame: CGRect?) -> (CGRect, NSScreen) {
+        let primary = NSScreen.screens.first ?? NSScreen.main!
+        guard let frame, frame.width > 0, frame.height > 0 else {
+            let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? primary
+            return (screen.frame, screen)
+        }
+        let rect = CaptureTargetGeometry.appKitRect(fromGlobalTopLeft: frame, primaryScreenHeight: primary.frame.height)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        return (rect, NSScreen.screens.first { $0.frame.contains(center) } ?? primary)
     }
 
     /// Converts a screen-local, top-left area to AppKit global coordinates.
@@ -319,6 +344,82 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         }
     }
 
+    private func chooseWindowFilter(screenshot: Bool) async throws -> (filter: SCContentFilter, window: SCWindow?) {
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        } catch where Self.isPermissionDenied(error) {
+            // The system picker can grant access to one window without access to the full list.
+            let picked = try await chooseContent(for: .window).filter
+            guard picked.style == .window else {
+                throw ScreenCaptureError.selectionFailed("Choose an app window to capture.")
+            }
+            if #available(macOS 15.2, *) {
+                guard picked.includedWindows.count == 1, let window = picked.includedWindows.first,
+                      !Self.isPoach(window.owningApplication),
+                      !Self.poachWindowNumbers.contains(Int(window.windowID)) else {
+                    throw ScreenCaptureError.selectionFailed("Choose a window from another app to capture.")
+                }
+            }
+            return (picked, nil)
+        }
+
+        let poachWindowIDs = Set(Self.poachWindowNumbers)
+        let windows = content.windows.compactMap { window -> CaptureWindowChoice? in
+            guard window.windowLayer == 0, let app = window.owningApplication, !Self.isPoach(app),
+                  !poachWindowIDs.contains(Int(window.windowID)) else { return nil }
+            return CaptureWindowChoice(window: window, app: app)
+        }.sorted { lhs, rhs in
+            let order = lhs.label.localizedStandardCompare(rhs.label)
+            return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+        }
+        guard !windows.isEmpty else {
+            throw ScreenCaptureError.selectionFailed("Open a window from another app and try again.")
+        }
+
+        let selected = try await WindowCaptureChooser.choose(from: windows, screenshot: screenshot)
+        return (SCContentFilter(desktopIndependentWindow: selected.window), selected.window)
+    }
+
+    private func chooseContent(for mode: PoachCaptureMode) async throws -> ContentFilterBox {
+        try await withCheckedThrowingContinuation { continuation in
+            pickerContinuation = continuation
+            var configuration = SCContentSharingPickerConfiguration()
+            configuration.allowedPickerModes = mode == .window ? .singleWindow : .singleDisplay
+            configuration.excludedBundleIDs = [Self.poachBundleID]
+            configuration.excludedWindowIDs = Self.poachWindowNumbers
+            let picker = SCContentSharingPicker.shared
+            activePicker = picker
+            picker.defaultConfiguration = configuration
+            picker.add(self)
+            picker.isActive = true
+            onPickerStateChange?(true)
+            picker.present(using: mode == .window ? .window : .display)
+        }
+    }
+
+    nonisolated func contentSharingPicker(
+        _ picker: SCContentSharingPicker,
+        didUpdateWith filter: SCContentFilter,
+        for stream: SCStream?
+    ) {
+        let box = ContentFilterBox(filter)
+        Task { @MainActor [weak self] in self?.resolvePicker(.success(box)) }
+    }
+
+    nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
+        Task { @MainActor [weak self] in self?.resolvePicker(.failure(ScreenCaptureError.selectionCancelled)) }
+    }
+
+    nonisolated func contentSharingPickerStartDidFailWithError(_ error: Error) {
+        let selectionError: ScreenCaptureError = Self.isPermissionDenied(error)
+            ? .permissionDenied
+            : .selectionFailed(error.localizedDescription)
+        Task { @MainActor [weak self] in
+            self?.resolvePicker(.failure(selectionError))
+        }
+    }
+
     nonisolated private static func isPermissionDenied(_ error: Error) -> Bool {
         let nsError = error as NSError
         if nsError.domain == SCStreamError.errorDomain,
@@ -342,6 +443,20 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
         }
     }
 
+    private func resolvePicker(_ result: Result<ContentFilterBox, Error>) {
+        guard let continuation = pickerContinuation else { return }
+        pickerContinuation = nil
+        activePicker?.remove(self)
+        activePicker?.isActive = false
+        activePicker = nil
+        onPickerStateChange?(false)
+        continuation.resume(with: result)
+    }
+
+    func cancelPickerSelection() {
+        resolvePicker(.failure(ScreenCaptureError.selectionCancelled))
+    }
+
     private func waitForRecordingFinish() async throws {
         if let recordingError { throw recordingError }
         if didFinish { return }
@@ -358,6 +473,12 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate {
     }
 }
 
+
+/// Carries a picker filter across the observer's nonisolated callbacks.
+private struct ContentFilterBox: @unchecked Sendable {
+    let filter: SCContentFilter
+    init(_ filter: SCContentFilter) { self.filter = filter }
+}
 
 private struct ScreenCaptureServiceError: LocalizedError {
     let message: String
