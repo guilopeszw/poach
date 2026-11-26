@@ -435,6 +435,23 @@ struct CapturePillDropIn<Pill: View>: View {
     @State private var start = Date()
     @State private var finished = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(CapturePillStyle.storageKey) private var storedStyle = CapturePillStyle.custom.rawValue
+
+    /// macOS 26: the drop is Liquid Glass, and the glass container melts it into the outline.
+    private var usesGlass: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
+    }
+    private var duration: Double { usesGlass ? Self.glassTotal : Self.total }
+
+    // The glass drop (after a reference the user recorded on Nov 26): a bead of glass swells on
+    // the outline and a blob of glass leaves it on a bridge that stretches, thins and snaps, then
+    // grows into the pill with a small wobble.
+    private static var glassEmerge: Double { 0.14 }
+    private static var glassTravel: Double { 0.46 }
+    private static var glassSettle: Double { 0.12 }
+    private static var glassTotal: Double { glassEmerge + glassTravel + glassSettle + fade }
+    /// Shapes closer than this melt together in the glass container.
+    private static var glassSpacing: CGFloat { 30 }
 
     /// The neck holds the drop for this part of the travel, then snaps.
     private static var pinch: Double { 0.24 }
@@ -451,10 +468,15 @@ struct CapturePillDropIn<Pill: View>: View {
             pill(1).position(x: frame.midX, y: frame.midY)
         } else {
             TimelineView(.animation) { timeline in
-                content(at: timeline.date.timeIntervalSince(start))
+                let t = timeline.date.timeIntervalSince(start)
+                if #available(macOS 26.0, *) {
+                    glassContent(at: t)
+                } else {
+                    content(at: t)
+                }
             }
             .task {
-                try? await Task.sleep(for: .seconds(Self.total + 0.05))
+                try? await Task.sleep(for: .seconds(duration + 0.05))
                 finished = true
             }
         }
@@ -507,6 +529,61 @@ struct CapturePillDropIn<Pill: View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// macOS 26. The bead and the blob are glass in one `GlassEffectContainer`, so the system draws
+    /// the smooth bridge between them while they are close and lets it snap as the bead shrinks.
+    /// Once the blob has the pill's size and place, the real pill replaces it (same capsule, same
+    /// glass) and its buttons fade in.
+    @available(macOS 26.0, *)
+    @ViewBuilder
+    private func glassContent(at t: Double) -> some View {
+        let travelStart = Self.glassEmerge
+        let landed = travelStart + Self.glassTravel + Self.glassSettle
+        ZStack(alignment: .topLeading) {
+            if t < landed {
+                let emerge = Self.easeInOut(t / Self.glassEmerge)
+                let travel = Self.easeInOut((t - travelStart) / Self.glassTravel)
+                // The blob leaves small and round on its bridge, and only grows into the pill over
+                // the second half of the travel and the settle, on a spring that overshoots a little.
+                let growStart = travelStart + Self.glassTravel * 0.5
+                let grow = Self.spring((t - growStart) / (Self.glassTravel * 0.5 + Self.glassSettle), damping: 6, frequency: 7)
+                let blob = 24 * emerge
+                let centre = CGPoint(x: origin.x + (frame.midX - origin.x) * travel,
+                                     y: origin.y + (frame.midY - origin.y) * travel)
+                // The bead holds the blob on the outline, then shrinks so the bridge thins and snaps.
+                let bead = emerge * (1 - Self.easeInOut((t - travelStart - 0.18) / 0.26))
+                GlassEffectContainer(spacing: Self.glassSpacing) {
+                    ZStack(alignment: .topLeading) {
+                        dropGlass
+                            .frame(width: 88 * bead, height: 14 * bead)
+                            .position(origin)
+                        dropGlass
+                            .frame(width: blob + (frame.width - blob) * grow,
+                                   height: blob + (frame.height - blob) * grow)
+                            .position(centre)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+                .allowsHitTesting(false)
+            } else {
+                pill(min(max((t - landed) / Self.fade, 0), 1))
+                    .position(x: frame.midX, y: frame.midY)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The same glass as the pill it becomes: adaptive for the unified pill, light for the custom one.
+    @available(macOS 26.0, *)
+    @ViewBuilder
+    private var dropGlass: some View {
+        if CapturePillStyle(rawValue: storedStyle) == .unified {
+            Color.clear.glassEffect(.regular, in: Capsule())
+        } else {
+            Color.clear.glassEffect(.regular, in: Capsule())
+                .environment(\.colorScheme, .light)
+        }
     }
 
     /// The outline segment and the drop, blurred and cut at half opacity so they melt together.
