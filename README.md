@@ -42,6 +42,10 @@ Download the Apple silicon build above, unzip it, and move **Poach.app** to Appl
 
 **Requirements.** Native recording and screenshots require macOS 15 or later. On macOS 14 you can import images and videos. Clips can be up to 30 seconds long. Poach records the screen without audio.
 
+## Install on Linux (preview)
+
+Download the package for your distribution: [Fedora `.rpm`](https://github.com/guilopeszw/poach/releases/latest/download/Poach-x86_64.rpm) or [Debian and Ubuntu `.deb`](https://github.com/guilopeszw/poach/releases/latest/download/Poach-amd64.deb), and verify it with the [Linux SHA-256 checksums](https://github.com/guilopeszw/poach/releases/latest/download/SHA256SUMS-linux.txt). The Linux client records screens and windows through PipeWire, analyzes captures with the same engine, and hands briefs to Claude Code and Codex through the same MCP connector. Click **No assistant connected** in Poach to copy the setup command for either assistant. See [apps/linux/README.md](apps/linux/README.md) for the GNOME extension, feature coverage, and building from source.
+
 <details>
 <summary>Download and first-launch help</summary>
 

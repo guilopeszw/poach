@@ -5,10 +5,10 @@ import { z } from "zod";
 import { inspectImage, inspectVideo, readDragReleaseFrames, readVideoMoment } from "@poach/core";
 import { readFile, rm, stat } from "node:fs/promises";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { nearbyBrowser, componentSummary, browserSchema } from "./browser.js";
+import { poachCacheDirectory } from "./paths.js";
 
 const server = new McpServer({ name: "poach", version: "0.1.0" });
 
@@ -147,7 +147,7 @@ server.registerTool(
 );
 
 async function readSharedBrief(briefId?: string): Promise<unknown> {
-  const cache = join(homedir(), "Library/Caches/Poach");
+  const cache = poachCacheDirectory();
   const latestPath = join(cache, "active-brief.json");
   let path = latestPath;
   let contents: string;
@@ -323,7 +323,7 @@ server.registerTool("poach_read_moment", {
 });
 // Each initialized stdio client owns a separate presence file. Idle clients remain
 // connected until their pipe closes. A short lease also bounds stale crash residue.
-const connections = join(homedir(), "Library/Caches/Poach/connections");
+const connections = join(poachCacheDirectory(), "connections");
 const presence = join(connections, String(process.pid));
 let heartbeat: NodeJS.Timeout | undefined;
 function refreshPresence(): void {

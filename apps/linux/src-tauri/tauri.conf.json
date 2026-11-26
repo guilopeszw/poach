@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Poach",
+  "version": "0.1.0",
+  "identifier": "io.github.brunocostaar.Poach",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Poach",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost; style-src 'self' 'unsafe-inline'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$CACHE/poach/**", "$HOME/**", "$TEMP/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "DeveloperTool",
+    "shortDescription": "Capture UI you like and hand it to your coding agent",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
+    "linux": {
+      "deb": { "depends": ["gstreamer1.0-tools", "gstreamer1.0-pipewire", "gstreamer1.0-plugins-bad", "ffmpeg", "nodejs"] },
+      "rpm": { "depends": ["gstreamer1", "pipewire-gstreamer", "gstreamer1-plugin-openh264", "gstreamer1-plugins-bad-free", "ffmpeg-free", "nodejs"] }
+    }
+  }
+}

@@ -16,6 +16,12 @@ outputs/Poach.app/
 outputs/connectors/
 outputs/compiled-icon/
 outputs/beta/
+outputs/linux/
 outputs/runtime-cache/
 outputs/.poach-build.*/
 outputs/poach-launch-kit/
+
+# Linux client
+apps/linux/src-tauri/target/
+apps/linux/src-tauri/gen/
+apps/linux/src-tauri/resources/

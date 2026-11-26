@@ -48,6 +48,10 @@ Run the pointer-trace event-cap regression check with `bash scripts/test-pointer
 
 To build a Finder-openable app bundle, run `bash scripts/build-macos-app.sh`. It creates `outputs/Poach.app`, which is ignored by Git.
 
+### Linux client (preview)
+
+`apps/linux` is a Tauri client that records through xdg-desktop-portal and GStreamer. It needs Rust, the WebKitGTK 4.1 development headers, and the PipeWire and openh264 GStreamer plugins; see [apps/linux/README.md](apps/linux/README.md) for packages and current feature coverage. Run it with `pnpm --filter @poach/linux app:dev`, and build an installable package with `pnpm --filter @poach/linux app:build --bundles rpm` (or `deb`); `apps/linux/scripts/stage-resources.mjs` bundles the analysis engine, the MCP connector and the GNOME extension into it. Screen recordings on GNOME use Mutter's ScreenCast D-Bus API together with the Poach Capture extension in `apps/linux/gnome-extension`, which keeps the recording controls out of the video. On Linux, the app and the MCP server share `$XDG_CACHE_HOME/poach` instead of `~/Library/Caches/Poach`. At launch and after each share, the Linux client removes expired brief archives and deletes its own recordings, screenshots, and keyframes older than 24 hours unless an unexpired brief references them; imported originals are never touched. `app:build` builds `@poach/core` and the MCP server through turbo before staging, so it works from a clean checkout after `pnpm install --frozen-lockfile`.
+
 ### Screen recording signing
 
 For Screen Recording development on macOS 26, use an `Apple Development` identity with a Team ID. The build script prefers that identity automatically; set `POACH_CODESIGN_IDENTITY` to its exact name when you have more than one. Apple documents that ScreenCaptureKit permission must be granted to the app and that the app must restart after authorization ([capture guide](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos), [manage signing identities in Xcode](https://developer.apple.com/documentation/xcode/sharing-your-teams-signing-certificates)).
@@ -135,6 +139,7 @@ Build first, then configure an MCP client to launch the server's compiled JavaSc
 
 ```text
 apps/chrome/         Unpacked Chrome companion for component evidence
+apps/linux/          Tauri preview client using xdg-desktop-portal capture
 apps/macos/          SwiftUI menu-bar app, capture service, and floating HUD
 packages/core/       TypeScript frame extraction, motion analysis, and palette code
 packages/mcp-server/ Local MCP server for media inspection and assistant handoff
@@ -172,7 +177,7 @@ Browser `atMs` values are relative to the start of the browser session. For over
 
 For a Bun-based release, pass the corresponding Bun and WebKit source and relinking archive as an absolute `POACH_BUN_RELINK_ARCHIVE` path when packaging. Publish the resulting `Bun-relink-materials.tar.part-*` files and `Bun-relink-materials.sha256` with the other checksummed release assets.
 
-Run `bash scripts/package-beta.sh` to produce the app archive, Codex installer, Claude extension, FFmpeg source archive, build recipe, and `SHA256SUMS.txt` in `outputs/beta/`. Verify the packaged files with `cd outputs/beta && shasum -a 256 -c SHA256SUMS.txt`. Run `open outputs/Poach.app` to launch the local build. The capture shortcut is Command–Shift–P. For an installer upgrade check, register a copy of the old local marketplace in a temporary Codex home. Run the packaged installer twice and verify that Poach is enabled and points to the installed marketplace.
+Run `bash scripts/package-beta.sh` to produce the app archive, Codex installer, Claude extension, FFmpeg source archive, build recipe, and `SHA256SUMS.txt` in `outputs/beta/`. Verify the packaged files with `cd outputs/beta && shasum -a 256 -c SHA256SUMS.txt`. On Linux, run `bash scripts/package-linux.sh` to build `Poach-x86_64.rpm`, `Poach-amd64.deb`, and `SHA256SUMS-linux.txt` in `outputs/linux/`, and verify them with `cd outputs/linux && sha256sum -c SHA256SUMS-linux.txt`. Attach the two packages and their manifest as separate release assets and keep them out of `SHA256SUMS.txt`, which lists only the macOS assets; the macOS smoke test downloads only its own assets by name. Run `open outputs/Poach.app` to launch the local build. The capture shortcut is Command–Shift–P. For an installer upgrade check, register a copy of the old local marketplace in a temporary Codex home. Run the packaged installer twice and verify that Poach is enabled and points to the installed marketplace.
 
 Only maintainers authorized by the repository owner may publish a release. Prepare release assets in a draft, verify them, then publish. Future releases are immutable once published. Use a new version for corrections. All tags require repository administrator access to create, update, or delete. The personal repository owner currently holds the only administrator account. GitHub also allows users with write access to manage releases, including releases for existing tags. Grant repository write access only to people explicitly authorized to publish. Keep workflow permissions read-only and review any credentials or GitHub App installation that requests contents write access.
 

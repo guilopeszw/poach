@@ -1,0 +1,9 @@
+{
+  "uuid": "poach-capture@brunocostaar.github.io",
+  "name": "Poach Capture",
+  "description": "Lets Poach record the screen while its recording controls stay out of the video, and gives Poach a top bar menu and a global shortcut (Super+Shift+P) while it runs.",
+  "settings-schema": "org.gnome.shell.extensions.poach-capture",
+  "shell-version": ["48", "49", "50"],
+  "url": "https://github.com/brunocostaar/poach",
+  "version-name": "0.2.0"
+}

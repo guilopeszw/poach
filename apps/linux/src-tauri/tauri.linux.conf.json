@@ -1,0 +1,15 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Poach",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 560,
+        "transparent": true
+      }
+    ]
+  }
+}

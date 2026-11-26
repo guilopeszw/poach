@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Poach</title>
+  </head>
+  <body>
+    <svg width="0" height="0" class="sprite" aria-hidden="true">
+      <symbol id="i-screen" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2.5" /><path d="M8 21h8M12 17v4" /></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M3 9h18" /><circle cx="6.5" cy="6.8" r=".6" /><circle cx="8.8" cy="6.8" r=".6" /></symbol>
+      <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3.2" /></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h7.5L18.5 8.5V20a.5.5 0 0 1-.5.5H6a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5Z" /><path d="M13 3.5V9h5.5" /></symbol>
+    </svg>
+
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-mark" id="brand-mark" alt="" width="28" height="28" />
+        <span class="brand-name">Poach</span>
+      </div>
+      <button type="button" class="ghost" id="new-capture" hidden>New capture</button>
+      <div class="connector-wrap">
+        <button type="button" id="connector" class="connector" aria-live="polite" aria-haspopup="menu" aria-expanded="false" aria-controls="connector-menu">Looking for your assistant…</button>
+        <div id="connector-menu" class="connector-menu" role="menu" aria-label="Copy the setup command" hidden>
+          <button type="button" role="menuitem" data-setup="claude">Copy Claude Code command</button>
+          <button type="button" role="menuitem" data-setup="codex">Copy Codex command</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="capture" class="capture" aria-labelledby="capture-title">
+        <div class="stage">
+          <div class="stage-copy">
+            <h1 id="capture-title">Poach the UI you wish you’d made.</h1>
+            <p class="stage-lede">Record the interaction or grab a still. Poach pulls out the frames, colors and timing, then hands them to your coding assistant.</p>
+          </div>
+          <img class="stage-pouch" id="stage-pouch" alt="" width="200" height="200" />
+
+          <div class="choices" id="capture-actions">
+            <button type="button" class="choice primary" data-record="monitor">
+              <svg class="icon" aria-hidden="true"><use href="#i-screen" /></svg>
+              <span class="choice-title">Record screen</span>
+              <span class="choice-hint">Up to 30 seconds. Poach steps out of the shot.</span>
+            </button>
+            <button type="button" class="choice primary" data-record="window">
+              <svg class="icon" aria-hidden="true"><use href="#i-window" /></svg>
+              <span class="choice-title">Record a window</span>
+              <span class="choice-hint">Only the window you pick ends up in the video.</span>
+            </button>
+            <button type="button" class="choice" id="screenshot">
+              <svg class="icon" aria-hidden="true"><use href="#i-shot" /></svg>
+              <span class="choice-title">Take a screenshot</span>
+              <span class="choice-hint">An area, a window or the whole screen.</span>
+            </button>
+            <button type="button" class="choice" id="import">
+              <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>
+              <span class="choice-title">Open a file</span>
+              <span class="choice-hint">PNG, JPEG, WebP, MP4 or MOV.</span>
+            </button>
+          </div>
+
+          <ol class="progress" id="progress" hidden aria-label="Analysis progress">
+            <li data-stage="motion">Measuring motion</li>
+            <li data-stage="frames">Picking keyframes</li>
+            <li data-stage="palette">Sampling colors</li>
+          </ol>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="editor" class="editor" aria-labelledby="editor-title" hidden>
+        <div class="work">
+          <div class="work-head">
+            <h1 id="editor-title">Recording</h1>
+            <p id="editor-meta" class="meta"></p>
+          </div>
+
+          <div class="frame" id="media"></div>
+
+          <div class="timeline-block" id="timeline-block">
+            <div class="timeline" id="timeline" role="group" aria-label="Recording timeline">
+              <div class="track" id="track"></div>
+              <div class="playhead" id="playhead" aria-hidden="true"></div>
+            </div>
+            <div class="timeline-scale"><span>0 s</span><span id="timeline-end"></span></div>
+
+            <form id="note-form" class="note-form">
+              <label for="note-text" id="note-label">Note at 0.00 s</label>
+              <div class="note-row">
+                <input id="note-text" type="text" placeholder="What happens here? “The card lifts and its shadow deepens.”" autocomplete="off" />
+                <button type="submit" class="secondary">Add note</button>
+              </div>
+            </form>
+            <ol id="notes" class="notes" aria-label="Notes on the timeline"></ol>
+          </div>
+
+          <div class="keyframes-block">
+            <h2>Keyframes</h2>
+            <ul id="keyframes" class="keyframes"></ul>
+          </div>
+        </div>
+
+        <aside class="side" aria-label="Handoff">
+          <section aria-labelledby="palette-title">
+            <h2 id="palette-title">Palette</h2>
+            <ul id="palette" class="palette"></ul>
+          </section>
+
+          <section aria-labelledby="motion-title" id="motion-section">
+            <h2 id="motion-title">Motion</h2>
+            <div class="motion">
+              <svg class="curve" id="curve" viewBox="-6 -6 112 112" aria-hidden="true"></svg>
+              <div>
+                <p class="motion-duration" id="motion-duration"></p>
+                <p class="motion-curve" id="motion-curve"></p>
+              </div>
+            </div>
+          </section>
+
+          <section aria-labelledby="context-label" class="handoff">
+            <h2><label for="context" id="context-label">Instructions</label></h2>
+            <textarea id="context" rows="4" placeholder="Build it with our Button component and keep the springy feel."></textarea>
+            <button type="button" class="primary-action" data-assistant="claude">Copy prompt for Claude Code</button>
+            <button type="button" class="secondary" data-assistant="codex">Copy prompt for Codex</button>
+            <p id="handoff-status" class="status" role="status" aria-live="polite"></p>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

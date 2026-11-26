@@ -1,0 +1,32 @@
+{
+  "mainBinaryName": "poach",
+  "build": {
+    "beforeBuildCommand": "pnpm -w exec turbo run build --filter=@poach/linux --filter=@poach/mcp-server && pnpm run stage-resources"
+  },
+  "bundle": {
+    "resources": {
+      "resources/core/": "core/",
+      "resources/mcp/": "mcp/"
+    },
+    "linux": {
+      "rpm": {
+        "files": {
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/metadata.json": "resources/gnome-extension/metadata.json",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/extension.js": "resources/gnome-extension/extension.js",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/icons/poach-symbolic.svg": "resources/gnome-extension/icons/poach-symbolic.svg",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/schemas/org.gnome.shell.extensions.poach-capture.gschema.xml": "resources/gnome-extension/schemas/org.gnome.shell.extensions.poach-capture.gschema.xml",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/schemas/gschemas.compiled": "resources/gnome-extension/schemas/gschemas.compiled"
+        }
+      },
+      "deb": {
+        "files": {
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/metadata.json": "resources/gnome-extension/metadata.json",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/extension.js": "resources/gnome-extension/extension.js",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/icons/poach-symbolic.svg": "resources/gnome-extension/icons/poach-symbolic.svg",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/schemas/org.gnome.shell.extensions.poach-capture.gschema.xml": "resources/gnome-extension/schemas/org.gnome.shell.extensions.poach-capture.gschema.xml",
+          "/usr/share/gnome-shell/extensions/poach-capture@brunocostaar.github.io/schemas/gschemas.compiled": "resources/gnome-extension/schemas/gschemas.compiled"
+        }
+      }
+    }
+  }
+}

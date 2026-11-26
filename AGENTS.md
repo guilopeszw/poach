@@ -3,6 +3,7 @@
 ## Project shape
 
 - `apps/macos` is the native SwiftUI client and ScreenCaptureKit integration.
+- `apps/linux` is the Tauri preview client; it captures through xdg-desktop-portal or, on GNOME, Mutter's ScreenCast API with the extension in `apps/linux/gnome-extension`, and must keep writing briefs in the format `packages/mcp-server` reads.
 - `packages/core` is the headless TypeScript engine. Keep it independent of AppKit and Swift.
 - `packages/mcp-server` exposes local core capabilities through the Model Context Protocol.
 

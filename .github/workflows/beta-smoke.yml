@@ -17,8 +17,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
           required_assets=(Poach-arm64.zip Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh)
+          # The tag may also carry Linux packages; download only the macOS assets.
+          patterns=()
+          for asset in "${required_assets[@]}" SHA256SUMS.txt 'Bun-relink-materials.*'; do patterns+=(--pattern "$asset"); done
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${patterns[@]}"
           bun_source_parts=()
           if unzip -Z1 Poach-arm64.zip | grep -Fx 'Poach.app/Contents/Resources/runtime/bin/bun' >/dev/null; then
             shopt -s nullglob

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.poach-capture" path="/org/gnome/shell/extensions/poach-capture/">
+    <key name="toggle-recording" type="as">
+      <!-- Ctrl+Shift+P is taken by editors' command palettes on Linux. -->
+      <default><![CDATA[['<Super><Shift>p']]]></default>
+      <summary>Start or stop a Poach screen recording</summary>
+      <description>Works while Poach is running, like ⌘⇧P in the macOS app.</description>
+    </key>
+  </schema>
+</schemalist>

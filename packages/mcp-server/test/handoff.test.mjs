@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+
+// Mirrors src/paths.ts; XDG_CACHE_HOME is cleared for spawned servers below.
+const cacheFor = (home) => join(home, process.platform === "darwin" ? "Library/Caches/Poach" : ".cache/poach");
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -40,7 +43,7 @@ async function makeVideoFixture(videoPath, rgb, afterRGB) {
 test("shared brief carries notes and visual moments through MCP", { timeout: 30_000 }, async (t) => {
   const home = await mkdtemp(join(tmpdir(), "poach-handoff-test-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  const cache = join(home, "Library/Caches/Poach");
+  const cache = cacheFor(home);
   await mkdir(cache, { recursive: true });
   const video = join(home, "demo.mp4");
   const png = join(home, "reference.png");
@@ -75,7 +78,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
   const path = join(cache, "active-brief.json");
   await writeFile(path, JSON.stringify(brief));
   const client = new Client({ name: "poach-handoff-test", version: "1.0.0" });
-  const transport = new StdioClientTransport({ command: process.execPath, args: [process.env.POACH_TEST_SERVER ?? new URL("../dist/index.js", import.meta.url).pathname], env: { ...process.env, HOME: home }, stderr: "pipe" });
+  const transport = new StdioClientTransport({ command: process.execPath, args: [process.env.POACH_TEST_SERVER ?? new URL("../dist/index.js", import.meta.url).pathname], env: { ...process.env, HOME: home, XDG_CACHE_HOME: "" }, stderr: "pipe" });
   await client.connect(transport);
   t.after(() => client.close());
   const shared = await client.callTool({ name: "poach_read_brief", arguments: {} });
@@ -194,7 +197,7 @@ test("shared brief carries notes and visual moments through MCP", { timeout: 30_
 test("archived briefs remain readable by ID after a newer brief is shared", { timeout: 30_000 }, async (t) => {
   const home = await mkdtemp(join(tmpdir(), "poach-brief-archive-test-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  const cache = join(home, "Library/Caches/Poach");
+  const cache = cacheFor(home);
   const archive = join(cache, "briefs");
   await mkdir(archive, { recursive: true });
   const olderVideo = join(home, "older.mp4");
@@ -223,7 +226,7 @@ test("archived briefs remain readable by ID after a newer brief is shared", { ti
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [process.env.POACH_TEST_SERVER ?? new URL("../dist/index.js", import.meta.url).pathname],
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, XDG_CACHE_HOME: "" },
     stderr: "pipe",
   });
   await client.connect(transport);
@@ -287,11 +290,11 @@ test("archived briefs remain readable by ID after a newer brief is shared", { ti
 test("connection status follows initialized clients independently", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "poach-connection-test-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  const directory = join(home, "Library/Caches/Poach/connections");
+  const directory = join(cacheFor(home), "connections");
   const transport = () => new StdioClientTransport({
     command: process.execPath,
     args: [process.env.POACH_TEST_SERVER ?? new URL("../dist/index.js", import.meta.url).pathname],
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, XDG_CACHE_HOME: "" },
     stderr: "pipe",
   });
   async function expectActive(count) {
