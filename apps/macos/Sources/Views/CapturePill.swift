@@ -92,6 +92,9 @@ struct CapturePill: View {
 
     private static let activeTint = Color(red: 0.77, green: 0.42, blue: 0)
     private static let activeFill = Color(red: 0.99, green: 0.90, blue: 0.78)
+    /// The unified pill's chosen-timer colour, sampled from a reference the user shared (#F0DA5A).
+    /// The custom pill keeps `activeTint`: on its pale fill and light glass this yellow is unreadable.
+    private static let activeYellow = Color(red: 0.94, green: 0.855, blue: 0.35)
     private static let dimmed = 0.35
 
     private var timer: PoachCaptureTimer { PoachCaptureTimer(storedSeconds: storedSeconds) }
@@ -323,7 +326,7 @@ extension CapturePill {
         HStack(spacing: 0) {
             nativeButton(id: "timer", enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
                 CaptureTimerGlyph(timer: timer)
-                    .foregroundStyle(timer == .off ? AnyShapeStyle(.primary) : AnyShapeStyle(Self.activeTint))
+                    .foregroundStyle(timer == .off ? AnyShapeStyle(.primary) : AnyShapeStyle(Self.activeYellow))
             }
             .accessibilityLabel("Timer")
             .accessibilityValue(timer.spokenTitle)
