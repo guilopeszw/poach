@@ -2,7 +2,9 @@
 
 ## Current status
 
-Current branch: `feat/home-window-redesign`, on top of `feat/optional-capture-timer` (both local only, not pushed, no PR yet). `origin/main` up to `f11d220` is merged in (`a07395f`).
+Current branch: `feat/home-window-redesign`, on top of `feat/optional-capture-timer` (both local only, not pushed, no PR yet). On 2026-11-26 it was rebased onto `main` at `2b1e440` (the v1.0.0 release). Replaying it linearly dropped its earlier merges of main, so `1263984` restores the result of merging the old tip with main. The pre-rebase tip is kept as `backup/home-window-redesign-pre-rebase`; delete it once the rebased branch has been checked by hand.
+
+Building now needs a full Xcode (26.6 is installed) so `actool` compiles the Liquid Glass icon, and the Apple Development certificate is used for signing automatically.
 
 The optional capture timer, the floating capture pill and the merge with main build cleanly and pass the scripted tests. The hands-on manual pass and the final whole-branch review are still pending.
 
