@@ -48,6 +48,12 @@ enum CapturePillLayout {
         frame(attachedTo: area, on: screen).insetBy(dx: -panelMargin, dy: -panelMargin)
     }
 
+    /// The selected area's corner radius: the pill's own (half its height), so the outline and the
+    /// pill that leaves it read as one shape. Smaller areas are held to half their shorter side.
+    static func areaCornerRadius(for area: CGRect) -> CGFloat {
+        min(size.height / 2, min(area.width, area.height) / 2)
+    }
+
     /// The centres of the three buttons, the same as the Off · 3s · 10s options, so the icons sit
     /// where the timer choices do.
     static var slotCentres: [CGFloat] {
@@ -418,6 +424,34 @@ extension CapturePill {
     }
 }
 
+/// The selected area's outline as a band `width` wide, centred on the area's rounded edge.
+struct AreaOutlineRing: Shape {
+    let area: CGRect
+    var width: CGFloat = 6
+
+    func path(in rect: CGRect) -> Path {
+        let radius = CapturePillLayout.areaCornerRadius(for: area)
+        let half = width / 2
+        let outer = Path(roundedRect: area.insetBy(dx: -half, dy: -half), cornerRadius: radius + half, style: .continuous)
+        let inner = Path(roundedRect: area.insetBy(dx: half, dy: half), cornerRadius: max(0, radius - half), style: .continuous)
+        return outer.subtracting(inner)
+    }
+}
+
+/// macOS 26: the selected area's outline as a ring of Liquid Glass, in the overlay's coordinates.
+@available(macOS 26.0, *)
+struct AreaOutlineGlass: View {
+    let area: CGRect
+
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .glassEffect(.regular, in: AreaOutlineRing(area: area))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The area pill's entrance, like a drop of liquid leaving the selection outline:
 /// 1–2. in one continuous, accelerating move, the outline swells at `origin` into a drop held by
 ///    a neck that stretches and snaps (a metaball: blurred shapes cut at half opacity), and the
@@ -430,6 +464,9 @@ struct CapturePillDropIn<Pill: View>: View {
     let origin: CGPoint
     /// The pill's final frame, in the parent's coordinates.
     let frame: CGRect
+    /// The selected area, when the outline is drawn here as a glass ring (macOS 26) so the pill
+    /// can leave it as one shape. `nil` keeps the bead on the outline.
+    var outline: CGRect? = nil
     let pill: (Double) -> Pill
 
     @State private var start = Date()
@@ -465,7 +502,11 @@ struct CapturePillDropIn<Pill: View>: View {
         // Once landed the pill is drawn directly: no timeline and no mask. A screen recording showed
         // the pressed timer lens clipped to the pill's capsule while it animated, in the real overlay.
         if reduceMotion || finished {
-            pill(1).position(x: frame.midX, y: frame.midY)
+            ZStack(alignment: .topLeading) {
+                if #available(macOS 26.0, *), let outline { AreaOutlineGlass(area: outline) }
+                pill(1).position(x: frame.midX, y: frame.midY)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSince(start)
@@ -551,13 +592,20 @@ struct CapturePillDropIn<Pill: View>: View {
                 let blob = 24 * emerge
                 let centre = CGPoint(x: origin.x + (frame.midX - origin.x) * travel,
                                      y: origin.y + (frame.midY - origin.y) * travel)
-                // The bead holds the blob on the outline, then shrinks so the bridge thins and snaps.
-                let bead = emerge * (1 - Self.easeInOut((t - travelStart - 0.18) / 0.26))
-                GlassEffectContainer(spacing: Self.glassSpacing) {
+                // Without a glass outline, a bead holds the blob on the outline, then shrinks so the
+                // bridge thins and snaps. With one, the blob hangs from the outline itself, and the
+                // melting distance closes instead, so the bridge snaps and the pill lands apart.
+                let release = Self.easeInOut((t - travelStart - 0.18) / 0.26)
+                let bead = emerge * (1 - release)
+                GlassEffectContainer(spacing: outline == nil ? Self.glassSpacing : Self.glassSpacing * (1 - release)) {
                     ZStack(alignment: .topLeading) {
-                        dropGlass
-                            .frame(width: 88 * bead, height: 14 * bead)
-                            .position(origin)
+                        if let outline {
+                            AreaOutlineGlass(area: outline)
+                        } else {
+                            dropGlass
+                                .frame(width: 88 * bead, height: 14 * bead)
+                                .position(origin)
+                        }
                         dropGlass
                             .frame(width: blob + (frame.width - blob) * grow,
                                    height: blob + (frame.height - blob) * grow)
@@ -567,6 +615,7 @@ struct CapturePillDropIn<Pill: View>: View {
                 }
                 .allowsHitTesting(false)
             } else {
+                if let outline { AreaOutlineGlass(area: outline) }
                 pill(min(max((t - landed) / Self.fade, 0), 1))
                     .position(x: frame.midX, y: frame.midY)
             }
