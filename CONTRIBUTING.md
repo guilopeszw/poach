@@ -170,7 +170,7 @@ Browser `atMs` values are relative to the start of the browser session. For over
 
 ## Package and verify a release (authorized maintainers)
 
-For a Bun-based release, pass the corresponding Bun and WebKit source and relinking archive as an absolute `POACH_BUN_RELINK_ARCHIVE` path when packaging. Publish the resulting `Bun-relink-materials.tar` with the other checksummed release assets.
+For a Bun-based release, pass the corresponding Bun and WebKit source and relinking archive as an absolute `POACH_BUN_RELINK_ARCHIVE` path when packaging. Publish the resulting `Bun-relink-materials.tar.part-*` files and `Bun-relink-materials.sha256` with the other checksummed release assets.
 
 Run `bash scripts/package-beta.sh` to produce the app archive, Codex installer, Claude extension, FFmpeg source archive, build recipe, and `SHA256SUMS.txt` in `outputs/beta/`. Verify the packaged files with `cd outputs/beta && shasum -a 256 -c SHA256SUMS.txt`. Run `open outputs/Poach.app` to launch the local build. The capture shortcut is Command–Shift–P. For an installer upgrade check, register a copy of the old local marketplace in a temporary Codex home. Run the packaged installer twice and verify that Poach is enabled and points to the installed marketplace.
 

@@ -19,8 +19,15 @@ cp outputs/runtime-cache/ffmpeg-8.1.3.tar.xz "$release/"
 cp scripts/bundle-runtime.sh "$release/"
 assets=("$app_archive" Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh)
 if [[ -n "${POACH_BUN_RELINK_ARCHIVE:-}" ]]; then
-  cp "$POACH_BUN_RELINK_ARCHIVE" "$release/Bun-relink-materials.tar"
-  assets+=(Bun-relink-materials.tar)
+  parts_dir="$stage/bun-relink"
+  mkdir "$parts_dir"
+  split -b 48m -a 2 "$POACH_BUN_RELINK_ARCHIVE" "$parts_dir/Bun-relink-materials.tar.part-"
+  shasum -a 256 < "$POACH_BUN_RELINK_ARCHIVE" | awk '{print $1, " Bun-relink-materials.tar"}' > "$release/Bun-relink-materials.sha256"
+  assets+=(Bun-relink-materials.sha256)
+  for part in "$parts_dir/"*; do
+    cp "$part" "$release/"
+    assets+=("${part##*/}")
+  done
 fi
 (
   cd "$release"

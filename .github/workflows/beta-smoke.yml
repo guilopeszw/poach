@@ -19,8 +19,15 @@ jobs:
         run: |
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
           required_assets=(Poach-arm64.zip Poach-Codex.zip Poach.mcpb ffmpeg-8.1.3.tar.xz bundle-runtime.sh)
+          bun_source_parts=()
           if unzip -Z1 Poach-arm64.zip | grep -Fx 'Poach.app/Contents/Resources/runtime/bin/bun' >/dev/null; then
-            required_assets+=(Bun-relink-materials.tar)
+            shopt -s nullglob
+            bun_source_parts=(Bun-relink-materials.tar.part-[a-z][a-z])
+            if (( ${#bun_source_parts[@]} == 0 )); then
+              echo "Release $RELEASE_TAG is missing the Bun relinking archive parts" >&2
+              exit 1
+            fi
+            required_assets+=(Bun-relink-materials.sha256 "${bun_source_parts[@]}")
           fi
           for asset in "${required_assets[@]}"; do
             if [ ! -f "$asset" ]; then
@@ -36,6 +43,14 @@ jobs:
               exit 1
             fi
             shasum -a 256 -c SHA256SUMS.txt
+            if (( ${#bun_source_parts[@]} > 0 )); then
+              expected_source_sha="$(awk '{print $1}' Bun-relink-materials.sha256)"
+              actual_source_sha="$(cat "${bun_source_parts[@]}" | shasum -a 256 | awk '{print $1}')"
+              if [[ "$actual_source_sha" != "$expected_source_sha" ]]; then
+                echo "Reassembled Bun relinking archive checksum does not match" >&2
+                exit 1
+              fi
+            fi
           elif [[ ! "$RELEASE_TAG" =~ ^v0\.1\.0-beta\.[1-4]$ ]]; then
             echo "Release $RELEASE_TAG must include SHA256SUMS.txt" >&2
             exit 1
