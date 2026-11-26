@@ -190,6 +190,11 @@ private struct CaptureSelectionView: View {
         }
     }
 
+    /// macOS 26: the area's outline is a ring of Liquid Glass the pill can melt out of.
+    private static var glassOutline: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
+    }
+
     private var isTargetScreen: Bool { state.mode == .fullScreen && state.displayTarget == displayID }
 
     private var canStart: Bool {
@@ -209,12 +214,20 @@ private struct CaptureSelectionView: View {
                         context.stroke(Path(frame), with: .color(.white), lineWidth: 2)
                         return
                     }
+                    // The area has the pill's corner radius, so the pill leaving it reads as one shape.
                     var mask = Path(CGRect(origin: .zero, size: size))
-                    if let highlight, highlight.width > 3, highlight.height > 3 { mask.addRect(highlight) }
+                    if let highlight, highlight.width > 3, highlight.height > 3 {
+                        mask.addPath(Path(roundedRect: highlight, cornerRadius: CapturePillLayout.areaCornerRadius(for: highlight),
+                                          style: .continuous))
+                    }
                     context.fill(mask, with: .color(.black.opacity(0.48)), style: FillStyle(eoFill: true))
-                    if let highlight {
-                        context.stroke(Path(highlight), with: .color(.white), lineWidth: 2)
-                        context.stroke(Path(highlight.insetBy(dx: 3, dy: 3)), with: .color(.white.opacity(0.5)), lineWidth: 1)
+                    // macOS 26 draws the outline as a glass ring instead (below).
+                    if let highlight, !Self.glassOutline {
+                        let radius = CapturePillLayout.areaCornerRadius(for: highlight)
+                        context.stroke(Path(roundedRect: highlight, cornerRadius: radius, style: .continuous),
+                                       with: .color(.white), lineWidth: 2)
+                        context.stroke(Path(roundedRect: highlight.insetBy(dx: 3, dy: 3), cornerRadius: max(0, radius - 3),
+                                            style: .continuous), with: .color(.white.opacity(0.5)), lineWidth: 1)
                     }
                 }
                 .contentShape(Rectangle())
@@ -228,6 +241,12 @@ private struct CaptureSelectionView: View {
                 .accessibilityHint(state.mode == .selectedPortion ? "Drag to select an area. The capture controls appear below it." : "Press Tab to choose the next target")
 
                 if state.mode == .selectedPortion {
+                    // While dragging (or below the minimum size), the glass ring alone; once the
+                    // pill drops, the drop-in draws the ring so both are one glass shape.
+                    if #available(macOS 26.0, *), let area = dragSelection, area.width > 3, area.height > 3,
+                       !(canStart && !dragging) {
+                        AreaOutlineGlass(area: area)
+                    }
                     // Only once an area is chosen: a drop falls from its outline and becomes the pill.
                     if let area = dragSelection, canStart, !dragging {
                         let frame = CaptureTargetGeometry.attachedPillFrame(
@@ -237,7 +256,7 @@ private struct CaptureSelectionView: View {
                         // or inside the area, so it always falls toward the pill.
                         let origin = CGPoint(x: min(max(frame.midX, area.minX), area.maxX),
                                              y: frame.minY >= area.maxY ? area.maxY : area.minY)
-                        CapturePillDropIn(origin: origin, frame: frame) { opacity in
+                        CapturePillDropIn(origin: origin, frame: frame, outline: Self.glassOutline ? area : nil) { opacity in
                             pill(controlsOpacity: opacity)
                         }
                         .transition(.opacity)
