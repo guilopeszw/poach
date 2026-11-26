@@ -112,7 +112,7 @@ struct PoachApp: App {
                 .background(HomeWindowAnchor(onAttach: pendingOnboardingAnimation))
                 .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
                 .onAppear {
-                    hotKeyAvailable = captureHotKey.register {
+                    _ = captureHotKey.register {
                         if CaptureCountdownController.shared.isRunning { CaptureCountdownController.shared.cancel() }
                         else if isRecording { Task { await stopRecording() } }
                         else if !isWorking {
@@ -290,8 +290,7 @@ struct PoachApp: App {
         Task {
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.requiresNewerMacOS }
-                let service = ScreenCaptureService()
-                captureServiceStorage = service
+                let service = makeCaptureService()
                 try await service.startRecording(mode: captureMode)
 
                 NSApp.unhide(nil)
