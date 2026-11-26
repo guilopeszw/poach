@@ -142,8 +142,14 @@ struct PoachDesignLab: View {
                 VStack(spacing: 40) {
                     CapturePill(phase: .selecting(canStart: true), timerExpanded: $pillTimerExpanded,
                                 onPrimary: {}, onCancel: {})
-                    CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
-                                onPrimary: {}, onCancel: {})
+                    // The open timer in light and dark; `.custom` forces light, `.unified` follows the scheme.
+                    HStack(spacing: 24) {
+                        CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
+                                    onPrimary: {}, onCancel: {})
+                        CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
+                                    onPrimary: {}, onCancel: {})
+                            .environment(\.colorScheme, .dark)
+                    }
                     CapturePill(phase: .recording(elapsed: 12, limit: 30), timerExpanded: .constant(false),
                                 onPrimary: {}, onCancel: {})
                 }
