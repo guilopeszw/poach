@@ -36,19 +36,19 @@ import Foundation
         precondition(PoachCaptureTimer.off.stepped(by: -1) == .off)
         precondition(PoachCaptureTimer.allCases.map(\.shortTitle) == ["Off", "3s", "10s"])
         precondition(PoachCaptureTimer.three.spokenTitle == "3 seconds")
-        // The lens is concentric with the 168 x 48 pill at both ends: 6 pt inside at rest,
+        // The lens is concentric with the 196 x 48 pill at both ends: 6 pt inside at rest,
         // 6 pt outside while pressed, the same above, below and at the side.
-        let lens = CaptureTimerLensLayout(pillWidth: 168, pillHeight: 48)
-        precondition(lens.restingSize == (60, 36) && lens.liftedSize == (84, 60))
+        let lens = CaptureTimerLensLayout(pillWidth: 196, pillHeight: 48)
+        precondition(lens.restingSize == (76, 36) && lens.liftedSize == (100, 60))
         precondition(lens.centre(of: 0) - lens.restingSize.width / 2 == 6)
-        precondition(lens.centre(of: 2) + lens.restingSize.width / 2 == 168 - 6)
+        precondition(lens.centre(of: 2) + lens.restingSize.width / 2 == 196 - 6)
         precondition(lens.centre(of: 0) - lens.liftedSize.width / 2 == -6)
-        precondition(lens.centre(of: 2) + lens.liftedSize.width / 2 == 168 + 6)
+        precondition(lens.centre(of: 2) + lens.liftedSize.width / 2 == 196 + 6)
         precondition((48 - lens.liftedSize.height) / 2 == -6 && (48 - lens.restingSize.height) / 2 == 6)
-        precondition(lens.centre(of: 1) == 84)
+        precondition(lens.centre(of: 1) == 98)
         // A press past either end holds the lens at the end position; the nearest option wins.
         precondition(lens.clampedCentre(-40) == lens.centre(of: 0) && lens.clampedCentre(400) == lens.centre(of: 2))
-        precondition(lens.index(atX: 10) == 0 && lens.index(atX: 84) == 1 && lens.index(atX: 160) == 2)
+        precondition(lens.index(atX: 10) == 0 && lens.index(atX: 98) == 1 && lens.index(atX: 180) == 2)
         precondition(lens.index(atX: -40) == 0 && lens.index(atX: 400) == 2)
         precondition(PoachCaptureTimer.ten.index == 2)
     }

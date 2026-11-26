@@ -13,7 +13,7 @@ enum CapturePillPhase: Equatable {
 
 /// Layout shared by every window that shows the pill, so it never jumps between phases.
 enum CapturePillLayout {
-    static let size = CGSize(width: 168, height: 48)
+    static let size = CGSize(width: 196, height: 48)
     static let bottomInset: CGFloat = 26
     /// Room around the pill in its own panels, so the timer lens and the shadow are not clipped.
     static let panelMargin: CGFloat = 16
