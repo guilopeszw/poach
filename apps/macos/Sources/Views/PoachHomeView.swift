@@ -295,4 +295,3 @@ extension DropRejectionShake: ViewModifier {
             .offset(x: 6 * swing)
     }
 }
-
