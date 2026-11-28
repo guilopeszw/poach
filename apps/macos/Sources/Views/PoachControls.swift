@@ -18,33 +18,29 @@ struct PoachSegments<Value: Hashable>: View {
     @Binding var selection: Value
     let choices: [(Value, String)]
     var underlined = false
+    /// Icon above the title, in 44 pt cells (the capture source cards).
+    var stacked = false
     var symbol: (Value) -> String? = { _ in nil }
 
     var body: some View {
+        if underlined { underlinedBody } else { pillBody }
+    }
+
+    /// Text tabs with a short bar under the selected one.
+    private var underlinedBody: some View {
         HStack(spacing: 0) {
             ForEach(choices, id: \.0) { value, title in
                 Button {
                     selection = value
                 } label: {
-                    Group {
-                        if let name = symbol(value) {
-                            Label(title, systemImage: name)
-                                .labelStyle(.titleAndIcon)
-                        } else {
-                            Text(title)
-                        }
-                    }
+                    choiceLabel(value, title)
                         .font(.system(size: 12, weight: selection == value ? .semibold : .regular))
                         .foregroundStyle(PoachPalette.ink)
                         .frame(maxWidth: .infinity, minHeight: 22)
                         .background(alignment: .bottom) {
-                            if selection == value && underlined {
+                            if selection == value {
                                 Capsule().fill(PoachPalette.ink)
                                     .frame(width: 22, height: 2)
-                                    .matchedGeometryEffect(id: "selection", in: indicator)
-                            } else if selection == value {
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(Color.white)
                                     .matchedGeometryEffect(id: "selection", in: indicator)
                             }
                         }
@@ -56,9 +52,90 @@ struct PoachSegments<Value: Hashable>: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selection)
         .padding(1)
-        .background(underlined ? Color.clear : PoachPalette.inset, in: RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
+    }
+
+    /// A grey track with a white thumb that slides under the labels.
+    /// The thumb glides on a smooth spring and the label colours fade with it.
+    private var pillBody: some View {
+        let index = choices.firstIndex { $0.0 == selection } ?? 0
+        let radius: CGFloat = stacked ? 11 : 8
+        return HStack(spacing: 0) {
+            ForEach(choices, id: \.0) { value, title in
+                let selected = selection == value
+                Button {
+                    selection = value
+                } label: {
+                    Group {
+                        if stacked, let name = symbol(value) {
+                            VStack(spacing: 3) {
+                                Image(systemName: name)
+                                    .font(.system(size: 14, weight: selected ? .semibold : .regular))
+                                    .frame(height: 16)
+                                    .accessibilityHidden(true)
+                                Text(title)
+                                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                            }
+                        } else {
+                            choiceLabel(value, title)
+                                .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                        }
+                    }
+                    .foregroundStyle(selected ? Self.selectedText : Self.idleText)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: selected)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, minHeight: stacked ? 44 : 26)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .background(alignment: .leading) {
+            GeometryReader { geometry in
+                let width = geometry.size.width / CGFloat(max(choices.count, 1))
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Color.white)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .strokeBorder(Self.thumbEdge, lineWidth: 0.5)
+                    }
+                    .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 0.5)
+                    .frame(width: width)
+                    .offset(x: width * CGFloat(index))
+                    // A critically damped spring keeps its speed when clicks interrupt each other.
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.38), value: index)
+            }
+        }
+        .padding(3)
+        .background(Self.track, in: RoundedRectangle(cornerRadius: radius + 3, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+
+    private static var track: Color { Color(white: 0.92) }
+    private static var thumbEdge: Color { Color(white: 0.82) }
+    private static var selectedText: Color { Color(white: 0.09) }
+    private static var idleText: Color { Color(white: 0.36) }
+
+    @ViewBuilder
+    private func choiceLabel(_ value: Value, _ title: String) -> some View {
+        if let name = symbol(value) {
+            // Drop the icon before the title would truncate.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 5) {
+                    Image(systemName: name).accessibilityHidden(true)
+                    Text(title)
+                }
+                .fixedSize()
+                Text(title)
+            }
+        } else {
+            Text(title)
+        }
     }
 }
 
@@ -89,6 +166,6 @@ struct PoachCountdown: View {
             .frame(width: 120, height: 120)
             .background(Color(white: 0.22), in: Circle())
             .overlay { Circle().strokeBorder(.red, lineWidth: 4) }
-            .accessibilityLabel("Recording starts in \(count) seconds")
+            .accessibilityLabel("Capture starts in \(count) seconds")
     }
 }

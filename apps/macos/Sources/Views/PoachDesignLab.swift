@@ -21,7 +21,7 @@ extension EnvironmentValues {
 
 struct PoachDesignLab: View {
     private enum Surface: String, CaseIterable {
-        case capture = "Capture", editor = "Editor", settings = "Settings", welcome = "Welcome"
+        case capture = "Capture", editor = "Editor", settings = "Settings", welcome = "Welcome", pill = "Pill", drop = "Drop"
     }
 
     private enum Dataset: String, CaseIterable {
@@ -53,7 +53,8 @@ struct PoachDesignLab: View {
         }
     }
 
-    @State private var surface = Surface(rawValue: UserDefaults.standard.string(forKey: "poachDesignSurface") ?? "") ?? .editor
+    @State private var surface = Surface(rawValue: ProcessInfo.processInfo.environment["POACH_DESIGN_SURFACE"]
+        ?? UserDefaults.standard.string(forKey: "poachDesignSurface") ?? "") ?? .editor
     @State private var dataset = Dataset(rawValue: UserDefaults.standard.string(forKey: "poachDesignDataset") ?? "") ?? .demo
     @State private var width = Int(UserDefaults.standard.string(forKey: "poachDesignWidth") ?? "") ?? 800
     private let heightLimit = UserDefaults.standard.string(forKey: "poachDesignHeight").flatMap(Int.init)
@@ -61,6 +62,16 @@ struct PoachDesignLab: View {
     @State private var homeTab = PoachHomeView.Tab.capture
     @State private var mode = PoachCaptureMode.selectedPortion
     @StateObject private var status = InspectionStatus()
+    @State private var pillTimerExpanded = false
+    @State private var pillTimerOpen = true
+    /// Alternates between resting and pressed, to watch the lens lift out of the pill.
+    @State private var pillLensPress: CGFloat?
+    /// Re-keys the drop specimen so the area pill's entrance replays.
+    @State private var dropReplay = 0
+    @State private var dropTimerExpanded = false
+    @State private var dropGlassBackdrop = CaptureGlassBackdrop()
+    @AppStorage(PoachCaptureTimer.storageKey) private var labTimerSeconds = PoachCaptureTimer.off.rawValue
+    @AppStorage(CapturePillStyle.storageKey) private var pillStyle = CapturePillStyle.custom.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +81,11 @@ struct PoachDesignLab: View {
                 Picker("Surface", selection: $surface) {
                     ForEach(Surface.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented)
+                if surface == .pill {
+                    Picker("Pill glass", selection: $pillStyle) {
+                        ForEach(CapturePillStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                    }.pickerStyle(.segmented)
+                }
                 Picker("Fixture", selection: $dataset) {
                     ForEach(Dataset.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented)
@@ -84,6 +100,10 @@ struct PoachDesignLab: View {
             .background(PoachPalette.panel)
         }
         .preferredColorScheme(.light)
+        .onAppear {
+            // Launched from a shell, the lab would otherwise stay inactive and show inactive-window colours.
+            NSApp.activate()
+        }
         .onAppear {
             status.begin("Reading recording…")
             status.finish()
@@ -111,7 +131,138 @@ struct PoachDesignLab: View {
                 .frame(width: width == 320 ? 320 : 440)
         case .welcome:
             PoachOnboardingView(onContinue: { surface = .capture })
+        case .drop:
+            dropSpecimen
+        case .pill:
+            // A busy backdrop, so the glass's refraction and tint are visible.
+            ZStack {
+                // Bright on top, dark (like a terminal) below.
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Color(red: 0.1, green: 0.1, blue: 0.12)
+                }
+                VStack(spacing: 6) {
+                    ForEach(0..<7) { row in
+                        Text(String(repeating: "Poach glass  ", count: 6))
+                            .font(.system(size: 18, weight: .heavy))
+                            .foregroundStyle(row.isMultiple(of: 2) ? .white : .yellow)
+                            .fixedSize()
+                    }
+                }
+                VStack(spacing: 4) {
+                    CapturePill(phase: .selecting(canStart: true), timerExpanded: $pillTimerExpanded,
+                                onPrimary: {}, onCancel: {})
+                    // The open timer in light and dark; `.custom` forces light, `.unified` follows the scheme.
+                    HStack(spacing: 24) {
+                        CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
+                                    onPrimary: {}, onCancel: {})
+                        // Dark, and wrapped in the area overlay's drop-in like the real selection.
+                        overlayPill { opacity in
+                            CapturePill(phase: .selecting(canStart: true), screenshot: true, timerExpanded: $pillTimerOpen,
+                                        onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
+                        }
+                        .environment(\.colorScheme, .dark)
+                    }
+                    // The lens pressed over Off (past the pill's left edge) and released every 2 s, with the press spring, in light and dark.
+                    HStack(spacing: 24) {
+                        CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(true),
+                                    onPrimary: {}, onCancel: {})
+                        overlayPill { opacity in
+                            CapturePill(phase: .selecting(canStart: true), timerExpanded: .constant(true),
+                                        onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
+                        }
+                        .environment(\.colorScheme, .dark)
+                    }
+                    .environment(\.timerLensPreviewX, pillLensPress)
+                    .task {
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .seconds(2))
+                            withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                                // Like a real press, the option under the lens becomes the choice at once.
+                                let press = pillLensPress == nil
+                                pillLensPress = press ? 10 : nil
+                                labTimerSeconds = press ? PoachCaptureTimer.off.rawValue : PoachCaptureTimer.ten.rawValue
+                            }
+                        }
+                    }
+                    CapturePill(phase: .recording(elapsed: 12, limit: 30), timerExpanded: .constant(false),
+                                onPrimary: {}, onCancel: {})
+                }
+            }
+            .frame(width: 480, height: 360)
+            .clipped()
         }
+    }
+
+    /// A pill inside `CapturePillDropIn`, sized like the area pill's panel, so the lab shows the
+    /// same wrapper (and any clipping it adds) as the real selection overlay.
+    private func overlayPill<Pill: View>(_ pill: @escaping (Double) -> Pill) -> some View {
+        let frame = CGRect(x: CapturePillLayout.panelMargin, y: CapturePillLayout.panelMargin,
+                           width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
+        return CapturePillDropIn(origin: CGPoint(x: frame.midX, y: 0), frame: frame, pill: pill)
+            .frame(width: CapturePillLayout.panelSize.width, height: CapturePillLayout.panelSize.height)
+    }
+
+    /// The area pill's entrance under a selection outline, replayed every 2 s.
+    private var dropSpecimen: some View {
+        let size = CGSize(width: 480, height: 360)
+        let area = CGRect(x: 90, y: 50, width: 300, height: 180)
+        let frame = CaptureTargetGeometry.attachedPillFrame(for: area, pillSize: CapturePillLayout.size,
+                                                             in: CGRect(origin: .zero, size: size))
+        let origin = CaptureTargetGeometry.pillAttachmentPoint(
+            for: area, pillFrame: frame, cornerRadius: CapturePillLayout.areaCornerRadius(for: area))
+        let radius = CapturePillLayout.areaCornerRadius(for: area)
+        let glass: Bool = { if #available(macOS 26.0, *) { true } else { false } }()
+        return ZStack(alignment: .topLeading) {
+            dropBackground
+            // The selection overlay's dimming around the rounded area.
+            Canvas { context, canvas in
+                var mask = Path(CGRect(origin: .zero, size: canvas))
+                mask.addPath(Path(roundedRect: area, cornerRadius: radius, style: .continuous))
+                context.fill(mask, with: .color(.black.opacity(0.48)), style: FillStyle(eoFill: true))
+            }
+            if !glass {
+                RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(.white, lineWidth: 2)
+                    .frame(width: area.width, height: area.height)
+                    .offset(x: area.minX, y: area.minY)
+            }
+            CapturePillDropIn(origin: origin, frame: frame, outline: glass ? area : nil) { opacity in
+                CapturePill(phase: .selecting(canStart: true), timerExpanded: $dropTimerExpanded,
+                            onPrimary: {}, onCancel: {}, controlsOpacity: opacity)
+            }
+            .id(dropReplay)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .environment(\.captureGlassBackdrop, dropGlassBackdrop)
+        .task {
+            let renderer = ImageRenderer(content: dropBackground)
+            renderer.scale = 2
+            if let image = renderer.cgImage { dropGlassBackdrop.useFixture(image) }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Button("Replay drop") {
+                dropTimerExpanded = false
+                dropReplay += 1
+            }
+            .buttonStyle(.bordered)
+            .padding(10)
+        }
+    }
+
+    /// The same synthetic scene is displayed and supplied to Metal, entirely in memory.
+    private var dropBackground: some View {
+        ZStack {
+            LinearGradient(colors: [.orange, .pink, .indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(spacing: 12) {
+                ForEach(0..<8) { row in
+                    Text(row.isMultiple(of: 2) ? "Glass · Poach · Glass" : "0123456789 · 0123456789")
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .frame(width: 480, height: 360)
     }
 
     private var videoURL: URL {

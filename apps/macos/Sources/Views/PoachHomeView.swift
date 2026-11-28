@@ -107,7 +107,7 @@ struct PoachHomeView: View {
     }
 
     static var windowSize: NSSize {
-        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 320)
+        NSSize(width: min(440, (NSScreen.main?.visibleFrame.width ?? 800) - 32), height: 324)
     }
 
     private var captureControls: some View {
@@ -118,11 +118,13 @@ struct PoachHomeView: View {
             PoachSegments(label: "Capture type", selection: $captureType,
                           choices: PoachCaptureType.allCases.map { ($0, $0.rawValue) },
                           symbol: { $0.symbol })
-                .frame(width: 210)
+                .frame(width: 236)
                 .disabled(isWorking || isRecording)
 
             PoachSegments(label: "Capture source", selection: $captureMode,
-                          choices: PoachCaptureMode.allCases.map { ($0, $0.title) })
+                          choices: PoachCaptureMode.allCases.map { ($0, $0.title) },
+                          stacked: true,
+                          symbol: { sourceSymbol($0) })
                 .disabled(isWorking || isRecording)
 
             Button(action: performCaptureAction) {
@@ -150,18 +152,18 @@ struct PoachHomeView: View {
                     dropError = nil
                     onLoadMedia()
                 } label: {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .medium))
-                            .frame(width: 28, height: 28)
-                            .background(PoachPalette.inset, in: RoundedRectangle(cornerRadius: 9))
+                            .frame(width: 28, height: 20)
+                            .padding(.bottom, 2)
                             .rotationEffect(.degrees(targeted && !reduceMotion ? -8 : 0))
                             .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.35), value: targeted)
                             .modifier(DropRejectionShake(phase: reduceMotion ? 0 : dropRejectionPhase))
                             .accessibilityHidden(true)
                         Text("Drop an image or video")
                             .font(.system(size: 13, weight: .semibold))
-                        Text(dropError ?? "or click to browse")
+                        Text(dropError ?? "or click to browse · ⌘V to paste")
                             .font(.caption)
                             .foregroundStyle(dropError == nil ? Color.secondary : PoachPalette.errorText)
                             .multilineTextAlignment(.center)
@@ -169,10 +171,12 @@ struct PoachHomeView: View {
                     .padding(6)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(highlightDropZone ? PoachPalette.inset : PoachPalette.panel,
-                                in: RoundedRectangle(cornerRadius: 10))
+                                in: RoundedRectangle(cornerRadius: 9))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline)
+                        // Dashed while idle; solid once a file hovers over it.
+                        RoundedRectangle(cornerRadius: 9)
+                            .strokeBorder(highlightDropZone ? PoachPalette.ink : PoachPalette.outline,
+                                          style: StrokeStyle(lineWidth: 1, dash: highlightDropZone ? [] : [5, 4]))
                             .allowsHitTesting(false)
                     }
                     .contentShape(Rectangle())
@@ -210,6 +214,35 @@ struct PoachHomeView: View {
             }
             .disabled(isWorking || isRecording)
             }
+        }
+        .background(pasteShortcut)
+    }
+
+    private func sourceSymbol(_ mode: PoachCaptureMode) -> String {
+        switch mode {
+        case .selectedPortion: "rectangle.dashed"
+        case .fullScreen: "display"
+        case .window: "macwindow"
+        }
+    }
+
+    /// ⌘V on the Capture tab opens a copied image or file like a drop.
+    private var pasteShortcut: some View {
+        Button("Paste image or video", action: pasteMedia)
+            .keyboardShortcut("v", modifiers: .command)
+            .disabled(isWorking || isRecording || loadingFile != nil)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+    }
+
+    private func pasteMedia() {
+        switch PoachPastedMedia.read(from: .general) {
+        case .success(let url):
+            dropError = nil
+            onDropMedia(url)
+        case .failure(let error):
+            rejectDrop(error.message)
         }
     }
 
@@ -260,33 +293,5 @@ extension DropRejectionShake: ViewModifier {
         content
             .rotationEffect(.degrees(-12 * swing))
             .offset(x: 6 * swing)
-    }
-}
-
-struct PoachRecordingStatusView: View {
-    let elapsedSeconds: Int
-    let onStop: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle().fill(.red).frame(width: 8, height: 8)
-            Text("Recording screen").font(.system(size: 13, weight: .semibold))
-                .accessibilityValue("\(elapsedSeconds) of 30 seconds")
-            Spacer(minLength: 4)
-            Button("Stop") { onStop() }
-                .buttonStyle(PoachActionStyle(fill: .red, foreground: .white))
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .frame(width: 260)
-        .background(PoachPalette.panel, in: RoundedRectangle(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.white.opacity(0.7), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
-        .tint(PoachPalette.ink)
-        .preferredColorScheme(.light)
     }
 }

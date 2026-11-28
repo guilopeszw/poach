@@ -79,7 +79,8 @@ struct PoachApp: App {
     @ViewBuilder
     private var mainWindow: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--poach-design-lab") {
+        if ProcessInfo.processInfo.arguments.contains("--poach-design-lab")
+            || ProcessInfo.processInfo.environment["POACH_DESIGN_LAB"] == "1" {
             PoachDesignLab()
         } else {
             captureWindow
@@ -113,7 +114,8 @@ struct PoachApp: App {
                 .onChange(of: defaultMode) { captureMode = PoachCaptureMode(rawValue: defaultMode) ?? .selectedPortion }
                 .onAppear {
                     _ = captureHotKey.register {
-                        if isRecording { Task { await stopRecording() } }
+                        if CaptureCountdownController.shared.isRunning { CaptureCountdownController.shared.cancel() }
+                        else if isRecording { Task { await stopRecording() } }
                         else if !isWorking {
                             captureMode = .selectedPortion
                             startRecording()
@@ -290,9 +292,7 @@ struct PoachApp: App {
             do {
                 guard #available(macOS 15.0, *) else { throw ScreenCaptureError.requiresNewerMacOS }
                 let service = makeCaptureService()
-                try await service.startRecording(mode: captureMode) {
-                    try await recordingWindow.countDown()
-                }
+                try await service.startRecording(mode: captureMode)
 
                 NSApp.unhide(nil)
                 NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
@@ -301,7 +301,7 @@ struct PoachApp: App {
                 isRecording = true
                 Self.captureLog.notice("Recording started")
                 elapsedSeconds = 0
-                recordingWindow.show(elapsedSeconds: 0) { Task { await stopRecording() } }
+                recordingWindow.show(elapsedSeconds: 0, attachedTo: service.recordingArea) { Task { await stopRecording() } }
 
                 while isRecording && elapsedSeconds < 30 {
                     try? await Task.sleep(for: .seconds(1))
@@ -426,60 +426,46 @@ private final class RecordingStatusWindowController {
     private var panel: NSPanel?
     private var stopAction: (() -> Void)?
 
-    func countDown() async throws {
-        var cancelled = false
-        let countdownPanel = makePanel()
-        countdownPanel.setContentSize(NSSize(width: 120, height: 120))
-        positionWindow(countdownPanel, near: NSApp.windows.first { $0.title == "Poach" })
-        NSApp.unhide(nil)
-        NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
-        defer { countdownPanel.orderOut(nil) }
-        for count in stride(from: 3, through: 1, by: -1) {
-            countdownPanel.contentView = NSHostingView(rootView:
-                Button { cancelled = true } label: { PoachCountdown(count: count) }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityHint("Cancel recording")
-                    .help("Cancel countdown")
-                .preferredColorScheme(.light)
-            )
-            countdownPanel.makeKeyAndOrderFront(nil)
-            try await Task.sleep(for: .seconds(1))
-            if cancelled { throw ScreenCaptureError.selectionCancelled }
-        }
-    }
-
-    func show(elapsedSeconds: Int, onStop: @escaping () -> Void) {
+    /// - Parameter area: the recorded area and its screen; the pill then stays on its outline.
+    func show(elapsedSeconds: Int, attachedTo area: (CGRect, NSScreen)? = nil, onStop: @escaping () -> Void) {
         stopAction = onStop
         let panel = self.panel ?? makePanel()
-        panel.contentView = NSHostingView(rootView: PoachRecordingStatusView(elapsedSeconds: elapsedSeconds) { [weak self] in
-            self?.stopAction?()
-        })
-        if self.panel == nil, let visible = (NSApp.windows.first { $0.title == "Poach" }?.screen ?? NSScreen.main)?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: visible.maxX - panel.frame.width - 16,
-                                         y: visible.maxY - panel.frame.height - 16))
+        // The pill stays where the selection pill was, on the screen the person just used.
+        if let (rect, screen) = area {
+            panel.setFrame(CapturePillLayout.panelFrame(attachedTo: rect, on: screen), display: true)
+        } else if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+            panel.setFrame(CapturePillLayout.panelFrame(on: screen), display: true)
         }
+        render(elapsedSeconds: elapsedSeconds, in: panel)
         panel.orderFrontRegardless()
         self.panel = panel
     }
 
     func update(elapsedSeconds: Int) {
         guard let panel else { return }
-        panel.contentView = NSHostingView(rootView: PoachRecordingStatusView(elapsedSeconds: elapsedSeconds) { [weak self] in
-            self?.stopAction?()
-        })
+        render(elapsedSeconds: elapsedSeconds, in: panel)
+    }
+
+    private func render(elapsedSeconds: Int, in panel: NSPanel) {
+        panel.contentView = NSHostingView(rootView: CapturePill(
+            phase: .recording(elapsed: elapsedSeconds, limit: 30),
+            timerExpanded: .constant(false),
+            onPrimary: { [weak self] in self?.stopAction?() },
+            onCancel: {}
+        ))
     }
 
     func showFinishing() {
         stopAction = nil
         panel?.contentView = NSHostingView(rootView:
-            HStack {
+            HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Finishing recording…")
+                Text("Finishing…").font(.system(size: 12, weight: .medium))
             }
-            .frame(width: 260, height: 58)
-            .background(PoachPalette.canvas, in: RoundedRectangle(cornerRadius: 12))
+            .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
+            .background { CapturePillGlass() }
             .preferredColorScheme(.light)
+            .accessibilityElement(children: .combine)
         )
     }
 
@@ -491,7 +477,7 @@ private final class RecordingStatusWindowController {
 
     private func makePanel() -> NSPanel {
         let panel = EditableBriefPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 260, height: 58),
+            contentRect: NSRect(origin: .zero, size: CapturePillLayout.panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
