@@ -17,16 +17,21 @@ extension EnvironmentValues {
 /// Native Metal equivalent of the HTML demo: convex refraction, separate RGB ray samples,
 /// Fresnel highlights and a smooth distance-field union for the neck of the departing drop.
 /// The selection's interior is transparent; pixels are drawn only at its rim and on the pill.
-struct CaptureLiquidGlass: View {
+struct CaptureLiquidGlass: View, Animatable {
     let backdrop: CaptureGlassBackdrop
     let area: CGRect?
     var pill: CGRect? = nil
     var connection: CGFloat = 0
+    nonisolated var timerRefraction = SIMD4<Float>.zero
+    nonisolated var animatableData: AnimatablePair<Float, Float> {
+        get { AnimatablePair(timerRefraction.x, timerRefraction.z) }
+        set { timerRefraction.x = newValue.first; timerRefraction.z = newValue.second }
+    }
     static var isSupported: Bool { CaptureGlassGPU.pipeline != nil }
 
     var body: some View {
         GeometryReader { geometry in
-            CaptureLiquidGlassView(backdrop: backdrop, area: area, pill: pill, connection: connection)
+            CaptureLiquidGlassView(backdrop: backdrop, area: area, pill: pill, connection: connection, timerRefraction: timerRefraction)
                 .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
@@ -37,6 +42,7 @@ private struct CaptureLiquidGlassView: NSViewRepresentable {
     let area: CGRect?
     let pill: CGRect?
     let connection: CGFloat
+    let timerRefraction: SIMD4<Float>
     func makeCoordinator() -> CaptureLiquidGlassRenderer { CaptureLiquidGlassRenderer(frames: backdrop.frames) }
 
     func makeNSView(context: Context) -> MTKView {
@@ -57,6 +63,7 @@ private struct CaptureLiquidGlassView: NSViewRepresentable {
         context.coordinator.area = area
         context.coordinator.pill = pill
         context.coordinator.connection = connection
+        context.coordinator.timerRefraction = timerRefraction
 
     }
 
@@ -104,7 +111,7 @@ private enum CaptureGlassGPU {
     static let source = """
     #include <metal_stdlib>
     using namespace metal;
-    struct Uniforms { float4 viewport; float4 area; float4 pill; float4 options; };
+    struct Uniforms { float4 viewport; float4 area; float4 pill; float4 options; float4 timerRefraction; };
     struct Vertex { float4 position [[position]]; float2 uv; };
     vertex Vertex glassVertex(uint id [[vertex_id]]) {
         float2 uv = float2((id << 1) & 2, id & 2);
@@ -119,9 +126,19 @@ private enum CaptureGlassGPU {
         float h = max(k - abs(a-b), 0.0) / k;
         return min(a,b) - h*h*k*0.25;
     }
+    // A level middle with a broad, tangent-continuous transition across the lens's rounded sides.
+    float pillDistance(float2 p, constant Uniforms &u) {
+        float halfWidth = max(u.timerRefraction.y,1.0);
+        float shoulder = min(28.0,halfWidth*0.65);
+        float t = clamp((halfWidth-abs(p.x-u.timerRefraction.x))/shoulder,0.0,1.0);
+        float falloff = t*t*t*(t*(t*6.0-15.0)+10.0);
+        float compression = 1.0-min(u.timerRefraction.w/max(u.pill.w,1.0),0.25)*clamp(u.timerRefraction.z,0.0,1.0)*falloff;
+        float2 q = float2(p.x,u.pill.y+(p.y-u.pill.y)/compression);
+        return roundedBox(q,u.pill,u.pill.w)*compression;
+    }
     float distanceAt(float2 p, constant Uniforms &u) {
         float a = u.options.z > 0.5 ? roundedBox(p,u.area,u.options.x) : 1e5;
-        float b = u.options.w > 0.5 ? roundedBox(p,u.pill,u.pill.w) : 1e5;
+        float b = u.options.w > 0.5 ? pillDistance(p,u) : 1e5;
         return merge(a,b,u.options.y);
     }
     float3 background(float2 p, texture2d<float> image, constant Uniforms &u) {
@@ -137,7 +154,7 @@ private enum CaptureGlassGPU {
                                   texture2d<float> image [[texture(0)]]) {
         float2 p = v.uv*u.viewport.xy;
         float a = u.options.z > 0.5 ? roundedBox(p,u.area,u.options.x) : 1e5;
-        float b = u.options.w > 0.5 ? roundedBox(p,u.pill,u.pill.w) : 1e5;
+        float b = u.options.w > 0.5 ? pillDistance(p,u) : 1e5;
         float d = merge(a,b,u.options.y);
         float shape = 1.0-smoothstep(-0.65,0.65,d);
         float band = min(28.0,min(u.area.z,u.area.w)*0.65);
@@ -155,8 +172,8 @@ private enum CaptureGlassGPU {
         float thickness = mix(max(u.options.x,16.0),max(u.pill.w,1.0),pillInfluence);
         float side = clamp(1.0-max(-d,0.0)/thickness,0.0,1.0);
         float z = sqrt(max(0.0,1.0-side*side));
-        float2 offset = -n*(1.0-z)*thickness*1.9*strength;
-        float2 split = n*(1.0-z)*thickness*0.22*strength;
+        float2 offset = -n*(1.0-z)*thickness*2.6*strength;
+        float2 split = n*(1.0-z)*thickness*0.38*strength;
         float2 ray = p+offset;
         float3 color = float3(background(ray+split,image,u).r,background(ray,image,u).g,
                               background(ray-split,image,u).b);
@@ -184,6 +201,7 @@ final class CaptureLiquidGlassRenderer: NSObject, MTKViewDelegate {
     var area: CGRect?
     var pill: CGRect?
     var connection: CGFloat = 0
+    var timerRefraction = SIMD4<Float>.zero
     private var textureCache: CVMetalTextureCache?
     private var fixtureTexture: MTLTexture?
     private let inFlight = DispatchSemaphore(value: 3)
@@ -225,7 +243,7 @@ final class CaptureLiquidGlassRenderer: NSObject, MTKViewDelegate {
         }
         let radius = area.map(CapturePillLayout.areaCornerRadius(for:)) ?? 0
         var uniforms = [SIMD4<Float>(Float(view.bounds.width),Float(view.bounds.height),0,0),
-            box(area),box(pill),SIMD4<Float>(Float(radius),Float(connection),area == nil ? 0 : 1,pill == nil ? 0 : 1)]
+            box(area),box(pill),SIMD4<Float>(Float(radius),Float(connection),area == nil ? 0 : 1,pill == nil ? 0 : 1),timerRefraction]
         encoder.setRenderPipelineState(pipeline)
         uniforms.withUnsafeMutableBytes { encoder.setFragmentBytes($0.baseAddress!,length:$0.count,index:0) }
         encoder.setFragmentTexture(texture,index:0)

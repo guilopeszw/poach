@@ -95,6 +95,92 @@ enum CapturePillStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Optical compression of the track under the lifted lens, in pill-local coordinates.
+/// Layout and foreground labels are never resized by this effect.
+struct CaptureTimerRefraction: Equatable, Sendable {
+    var centre: CGFloat = 0
+    var amount: CGFloat = 0
+    static let inset: CGFloat = 3.5
+    static let halfWidth = CGFloat(CaptureTimerLensLayout(
+        pillWidth: CapturePillLayout.size.width, pillHeight: CapturePillLayout.size.height).liftedSize.width / 2)
+
+    func compression(at x: CGFloat, halfHeight: CGFloat) -> CGFloat {
+        // Keep the lens's straight middle level; spread the transition across its rounded sides.
+        let shoulder = min(28, Self.halfWidth * 0.65)
+        let t = min(max((Self.halfWidth - abs(x - centre)) / shoulder, 0), 1)
+        let falloff = t * t * t * (t * (t * 6 - 15) + 10)
+        return 1 - min(Self.inset / max(halfHeight, 1), 0.25) * min(max(amount, 0), 1) * falloff
+    }
+
+    func uniform(in frame: CGRect) -> SIMD4<Float> {
+        SIMD4(Float(frame.minX + centre), Float(Self.halfWidth), Float(amount), Float(Self.inset))
+    }
+}
+
+private struct CaptureTimerRefractionKey: PreferenceKey {
+    static let defaultValue = CaptureTimerRefraction()
+    static func reduce(value: inout CaptureTimerRefraction, nextValue: () -> CaptureTimerRefraction) {
+        let next = nextValue()
+        if next.centre > 0 { value = next }
+    }
+}
+
+/// The original capsule, optically pinched near the lens. Its frame and centre stay fixed.
+private struct CaptureTimerTrackShape: Shape {
+    var refraction: CaptureTimerRefraction
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(refraction.centre, refraction.amount) }
+        set { refraction.centre = newValue.first; refraction.amount = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard refraction.amount > 0.001 else { return Capsule().path(in: rect) }
+        let radius = min(rect.width, rect.height) / 2
+        guard radius > 0 else { return Path() }
+        let straight = max(0, rect.width - 2 * radius)
+        let arc = CGFloat.pi * radius
+        let perimeter = 2 * (straight + arc)
+        var points: [CGPoint] = []
+        for index in 0..<160 {
+            var d = perimeter * CGFloat(index) / 160
+            var point: CGPoint
+            if d < straight {
+                point = CGPoint(x: rect.minX + radius + d, y: rect.minY)
+            } else if d < straight + arc {
+                d -= straight
+                let angle = d / radius - .pi / 2
+                point = CGPoint(x: rect.maxX - radius + cos(angle) * radius, y: rect.midY + sin(angle) * radius)
+            } else if d < 2 * straight + arc {
+                d -= straight + arc
+                point = CGPoint(x: rect.maxX - radius - d, y: rect.maxY)
+            } else {
+                d -= 2 * straight + arc
+                let angle = d / radius + .pi / 2
+                point = CGPoint(x: rect.minX + radius + cos(angle) * radius, y: rect.midY + sin(angle) * radius)
+            }
+            point.y = rect.midY + (point.y - rect.midY) * refraction.compression(at: point.x - rect.minX, halfHeight: radius)
+            points.append(point)
+        }
+        // Continuous tangents keep the glass highlight smooth through the shoulder. Straight
+        // sections remain exactly horizontal, rather than exposing the sampled polygon's corners.
+        var path = Path()
+        path.move(to: points[0])
+        for index in points.indices {
+            let previous = points[(index + points.count - 1) % points.count]
+            let start = points[index]
+            let end = points[(index + 1) % points.count]
+            let next = points[(index + 2) % points.count]
+            path.addCurve(to: end,
+                control1: CGPoint(x: start.x + (end.x - previous.x) / 6,
+                                  y: start.y + (end.y - previous.y) / 6),
+                control2: CGPoint(x: end.x - (next.x - start.x) / 6,
+                                  y: end.y - (next.y - start.y) / 6))
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
 /// The floating capture pill: ⏱ · ● · ✕ (⏱ · 📷 · ✕ for screenshots).
 /// Clicking ⏱ expands the timer options over the whole pill; choosing one collapses it.
 struct CapturePill: View {
@@ -110,6 +196,7 @@ struct CapturePill: View {
     @AppStorage(CapturePillStyle.storageKey) private var storedStyle = CapturePillStyle.custom.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.capturePillExternalGlass) private var externalGlass
+    @State private var timerRefraction = CaptureTimerRefraction()
     @FocusState private var optionsFocused: Bool
     @Namespace private var glassSpace
 
@@ -159,7 +246,12 @@ struct CapturePill: View {
         .opacity(controlsOpacity)
         .allowsHitTesting(controlsOpacity > 0.5)
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-        .background { CapturePillGlass() }
+        .background { CapturePillGlass(refraction: timerRefraction) }
+        .onPreferenceChange(CaptureTimerRefractionKey.self) { value in
+            withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                timerRefraction = value
+            }
+        }
         .overlay { progressEdge }
         .background { shortcuts }
         .animation(reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.1), value: timerExpanded)
@@ -312,26 +404,34 @@ struct CapturePill: View {
 
 @available(macOS 26.0, *)
 extension CapturePill {
-    /// `.unified`: only system glass. The ⏱ button and the timer options share a
-    /// `glassEffectID`, so opening the timer morphs the button's glass into the options.
+    /// Only the background participates in the glass union and its morph. The buttons and
+    /// timer labels stay above the entire container, outside its refraction and magnification.
     fileprivate var nativeBody: some View {
         ZStack {
             GlassEffectContainer(spacing: 6) {
                 ZStack {
                     if timerExpanded && isSelecting {
-                        // Only the glass: the options are drawn above the container, so nothing
-                        // in it can clip the lens while it lifts out of the pill.
                         Color.clear
                             .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
-                            .glassEffect(externalGlass ? .identity : .regular, in: Capsule())
+                            .glassEffect(externalGlass ? .identity : .regular,
+                                         in: CaptureTimerTrackShape(refraction: timerRefraction))
                             .glassEffectID("timer", in: glassSpace)
                     } else {
-                        nativeButtons
+                        HStack(spacing: 0) {
+                            nativeButtonGlass(id: "timer", slot: 0)
+                            nativeButtonGlass(id: "primary", slot: 1)
+                            nativeButtonGlass(id: "cancel", slot: 2)
+                        }
                     }
                 }
             }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
             if timerExpanded && isSelecting {
                 nativeOptions
+                    .transition(.opacity)
+            } else {
+                nativeButtons
                     .transition(.opacity)
             }
         }
@@ -340,6 +440,11 @@ extension CapturePill {
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
         .overlay { progressEdge }
         .background { shortcuts }
+        .onPreferenceChange(CaptureTimerRefractionKey.self) { value in
+            withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                timerRefraction = value
+            }
+        }
         // Unlike `.custom`, the glass is not forced light: it adapts to what is behind it like
         // the system's controls, and the `.primary` icons follow it.
         .animation(reduceMotion ? nil : .bouncy(duration: 0.38), value: timerExpanded)
@@ -347,7 +452,7 @@ extension CapturePill {
 
     private var nativeButtons: some View {
         HStack(spacing: 0) {
-            nativeButton(id: "timer", slot: 0, enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
+            nativeButton(slot: 0, enabled: isSelecting, prominent: false) { timerExpanded = true } label: {
                 CaptureTimerGlyph(timer: timer)
                     .foregroundStyle(timer == .off ? AnyShapeStyle(.primary) : AnyShapeStyle(Self.activeYellow))
             }
@@ -356,7 +461,7 @@ extension CapturePill {
             .accessibilityHint("Shows timer options")
             .help("Capture timer: \(timer.spokenTitle) (T)")
 
-            nativeButton(id: "primary", slot: 1, enabled: primaryEnabled, prominent: true, action: onPrimary) {
+            nativeButton(slot: 1, enabled: primaryEnabled, prominent: true, action: onPrimary) {
                 Image(systemName: primarySymbol)
                     .font(.system(size: 13, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
@@ -366,7 +471,7 @@ extension CapturePill {
             .help(primaryHelp)
             .keyboardShortcut(.defaultAction)
 
-            nativeButton(id: "cancel", slot: 2, enabled: cancelEnabled, prominent: false, action: onCancel) {
+            nativeButton(slot: 2, enabled: cancelEnabled, prominent: false, action: onCancel) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -383,10 +488,9 @@ extension CapturePill {
         return screenshot ? PoachPalette.ink : .red
     }
 
-    private func nativeButton<Label: View>(id: String, slot: Int, enabled: Bool, prominent: Bool, action: @escaping () -> Void,
+    private func nativeButton<Label: View>(slot: Int, enabled: Bool, prominent: Bool, action: @escaping () -> Void,
                                            @ViewBuilder label: () -> Label) -> some View {
-        // One cell of the pill; the cells' glass merges into a single capsule. The cells cover the
-        // pill, split halfway between the slot centres, and each icon sits on its slot's centre.
+        // Foreground only: never apply glassEffect or a scale transform to the button/label.
         let span = CapturePillLayout.slotSpan(slot)
         let width = span.maxX - span.minX
         return Button(action: action) {
@@ -401,9 +505,15 @@ extension CapturePill {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : Self.dimmed)
-        .glassEffect(externalGlass ? .identity : .regular.interactive(enabled), in: Capsule())
-        .glassEffectUnion(id: "pill", namespace: glassSpace)
-        .glassEffectID(id, in: glassSpace)
+    }
+
+    private func nativeButtonGlass(id: String, slot: Int) -> some View {
+        let span = CapturePillLayout.slotSpan(slot)
+        return Color.clear
+            .frame(width: span.maxX - span.minX, height: CapturePillLayout.size.height)
+            .glassEffect(externalGlass ? .identity : .regular, in: Capsule())
+            .glassEffectUnion(id: "pill", namespace: glassSpace)
+            .glassEffectID(id, in: glassSpace)
     }
 
     /// Off · 3s · 10s with the same lens picker as `.custom`, on the pill's glass.
@@ -411,7 +521,6 @@ extension CapturePill {
         CaptureTimerLensPicker(
             selection: Binding(get: { timer }, set: { storedSeconds = $0.rawValue }),
             whiteLabels: true,
-            unifiedGlass: true,
             onCommit: { timerExpanded = false }
         )
         .frame(width: CapturePillLayout.size.width, height: CapturePillLayout.size.height)
@@ -499,6 +608,7 @@ struct CapturePillDropIn<Pill: View>: View {
 
     @State private var start = Date()
     @State private var finished = false
+    @State private var timerRefraction = CaptureTimerRefraction()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.captureGlassBackdrop) private var backdrop
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -621,7 +731,8 @@ struct CapturePillDropIn<Pill: View>: View {
             Group {
                 if let backdrop, backdrop.isReady, !reduceTransparency, contrast != .increased, CaptureLiquidGlass.isSupported {
                     CaptureLiquidGlass(backdrop: backdrop, area: outline, pill: blobFrame,
-                                       connection: Self.glassSpacing * (1 - release))
+                                       connection: Self.glassSpacing * (1 - release),
+                                       timerRefraction: timerRefraction.uniform(in: frame))
                 } else {
                     GlassEffectContainer(spacing: Self.glassSpacing * (1 - release)) {
                         ZStack(alignment: .topLeading) {
@@ -638,7 +749,7 @@ struct CapturePillDropIn<Pill: View>: View {
                             Color.clear
                                 .frame(width: max(0.01, blob + (frame.width - blob) * grow),
                                        height: max(0.01, blob + (frame.height - blob) * grow))
-                                .glassEffect(.clear, in: Capsule())
+                                .glassEffect(.clear, in: CaptureTimerTrackShape(refraction: timerRefraction))
                                 .position(centre)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -655,6 +766,11 @@ struct CapturePillDropIn<Pill: View>: View {
                 .environment(\.capturePillExternalGlass, true)
                 .environment(\.colorScheme, .dark)
                 .position(x: frame.midX, y: frame.midY)
+        }
+        .onPreferenceChange(CaptureTimerRefractionKey.self) { value in
+            withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.22, dampingFraction: 0.78)) {
+                timerRefraction = value
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -708,6 +824,7 @@ struct CapturePillDropIn<Pill: View>: View {
 /// what is behind the pill (the desktop for the pill's own panels, the window content inside
 /// the window chooser). Earlier systems keep `CapturePillLegacyGlass`.
 struct CapturePillGlass: View {
+    var refraction = CaptureTimerRefraction()
     @Environment(\.capturePillExternalGlass) private var externalGlass
 
     var body: some View {
@@ -716,7 +833,7 @@ struct CapturePillGlass: View {
                 Color.clear
             } else if #available(macOS 26.0, *) {
                 // Light glass even in Dark Mode or over dark windows, so the dark icons stay legible.
-                Color.clear.glassEffect(.regular, in: Capsule())
+                Color.clear.glassEffect(.regular, in: CaptureTimerTrackShape(refraction: refraction))
                     .environment(\.colorScheme, .light)
             } else {
                 CapturePillLegacyGlass()
@@ -846,27 +963,33 @@ private enum CapturePillTimerButton {
 private struct CaptureTimerGlyph: View {
     let timer: PoachCaptureTimer
 
-    /// Matched to the `timer` symbol at 15 pt semibold, measured at 17 × 17 pt of ink with a
-    /// 1.875 pt stroke. The icons' ring spans 20.65 units of their 24-unit grid (radius 9.5 plus
-    /// the stroke), so the grid is scaled to make it 17 pt.
-    private static let scale: CGFloat = 17 / 20.65
+    /// Both drawings have an explicit 18 pt ink diameter. Shape strokes are applied after
+    /// their path is sized, so subtract the final stroke before converting the 19-unit ring.
+    private static let diameter: CGFloat = 18
     private static let ringStroke: CGFloat = 1.875
+    private static let ringFrame: CGFloat = (diameter - ringStroke) * 24 / 19
 
     var body: some View {
-        if timer == .off {
-            Image(systemName: "timer")
-                .font(.system(size: 15, weight: .semibold))
-        } else {
-            ZStack {
-                TimerIconShape()
-                    .stroke(style: StrokeStyle(lineWidth: Self.ringStroke, lineCap: .round, lineJoin: .round))
-                Text("\(timer.seconds)")
-                    .font(.system(size: timer.seconds >= 10 ? 8.5 : 10, weight: .semibold))
-                    .monospacedDigit()
+        Group {
+            if timer == .off {
+                Image(systemName: "timer")
+                    .resizable()
+                    .scaledToFit()
+                    .fontWeight(.semibold)
+                    .frame(width: Self.diameter, height: Self.diameter)
+            } else {
+                ZStack {
+                    TimerIconShape()
+                        .stroke(style: StrokeStyle(lineWidth: Self.ringStroke, lineCap: .round, lineJoin: .round))
+                    Text("\(timer.seconds)")
+                        .font(.system(size: timer.seconds >= 10 ? 8.5 : 10, weight: .semibold))
+                        .monospacedDigit()
+                }
+                .frame(width: Self.ringFrame, height: Self.ringFrame)
             }
-            .frame(width: 24 * Self.scale, height: 24 * Self.scale)
-            .accessibilityHidden(true)
         }
+        .frame(width: 22, height: 22)
+        .accessibilityHidden(true)
     }
 }
 
@@ -920,30 +1043,6 @@ extension TimerOptionsCollapse: ViewModifier {
     }
 }
 
-/// The part of the lens outside the pill (both capsules), where the refracted pill shows.
-private struct LensOverhang: Shape {
-    let lens: CGRect
-    let pill: CGRect
-
-    func path(in rect: CGRect) -> Path {
-        Capsule().path(in: lens).subtracting(Capsule().path(in: pill))
-    }
-}
-
-/// A copy of the pill's glass for the refraction under the lifted lens.
-private struct RefractedPillGlass: View {
-    let unified: Bool
-
-    var body: some View {
-        if unified, #available(macOS 26.0, *) {
-            Color.clear.glassEffect(.regular, in: Capsule())
-        } else {
-            CapturePillGlass()
-                .environment(\.capturePillExternalGlass, false)
-        }
-    }
-}
-
 /// The timer options as a segmented control with a clear lens (Poach brief `FDBFE307…`, and a
 /// reference the user shared on Nov 26). At rest the chosen option sits under a pill inside the
 /// pill; while pressed the lens grows into a wider capsule that stands out of the pill and follows
@@ -953,29 +1052,17 @@ private struct CaptureTimerLensPicker: View {
     @Binding var selection: PoachCaptureTimer
     /// White labels, like the unified pill's icons; dark ones on the custom pill's light glass.
     var whiteLabels = false
-    /// The pill's own glass, refracted under the lifted lens: the system glass of the unified pill
-    /// (which follows the colour scheme), or `CapturePillGlass` for the custom one.
-    var unifiedGlass = false
     let onCommit: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     /// `.custom` forces light; `.unified` follows the system, so the rim adapts.
     @Environment(\.colorScheme) private var colorScheme
     /// Pointer x while pressed; `nil` when the lens rests on `selection`.
     @State private var pressedX: CGFloat?
     @Environment(\.timerLensPreviewX) private var previewX
     private var dragX: CGFloat? { pressedX ?? previewX }
-
-    /// How much the lifted lens magnifies the pill's edge under it. Small enough that the bent
-    /// edge stays inside the lens at the ends too (it overhangs the pill by 6 pt).
-    private static let refraction: CGFloat = 1.12
-    /// A white edge with a warm fringe just outside and a blue one just inside, softened and
-    /// added together so they read as dispersed light rather than stripes.
-    private static let prismBands: [(color: Color, spread: CGFloat)] = [
-        (Color(red: 1, green: 0.45, blue: 0.2), 1.015),
-        (.white, 1),
-        (Color(red: 0.3, green: 0.6, blue: 1), 0.985)
-    ]
 
     var body: some View {
         GeometryReader { geometry in
@@ -988,52 +1075,20 @@ private struct CaptureTimerLensPicker: View {
                 ?? CGFloat(layout.centre(of: selection.index))
 
             ZStack(alignment: .topLeading) {
-                // A clear Liquid Glass lens was tried on macOS 26 and dropped: over dark backgrounds
-                // it became an opaque grey patch.
+                // Only the lens perimeter refracts the underlying track; its centre is clear.
                 lens(lifted: lifted)
                     .frame(width: CGFloat(size.width), height: CGFloat(size.height))
                     .position(x: centre, y: geometry.size.height / 2)
 
-                if lifted {
-                    // Refraction of the pill under the lifted lens: its edge, magnified about the
-                    // lens's centre and seen only through the lens, so it bends outward the way the
-                    // track does in the user's reference. The labels above are left unrefracted.
-                    let anchor = UnitPoint(x: centre / max(geometry.size.width, 1), y: 0.5)
-                    let pillRect = CGRect(origin: .zero, size: geometry.size)
-                    let lensRect = CGRect(x: centre - CGFloat(size.width) / 2, y: (geometry.size.height - CGFloat(size.height)) / 2,
-                                          width: CGFloat(size.width), height: CGFloat(size.height))
-                    ZStack {
-                        // The pill's own glass, magnified about the lens's centre: under the lens
-                        // the pill seems to swell out to the bent edge.
-                        RefractedPillGlass(unified: unifiedGlass)
-                            .scaleEffect(Self.refraction, anchor: anchor)
-                        // Prism dispersion, after the "prism warp" glass in the user's Figma
-                        // reference: the bent edge splits into soft warm and blue fringes.
-                        ForEach(Self.prismBands.indices, id: \.self) { i in
-                            let band = Self.prismBands[i]
-                            Capsule()
-                                .strokeBorder(band.color.opacity(colorScheme == .dark ? 0.7 : 0.6), lineWidth: 1.2)
-                                .scaleEffect(Self.refraction * band.spread, anchor: anchor)
-                                .blur(radius: 0.7)
-                                .blendMode(colorScheme == .dark ? .plusLighter : .normal)
-                        }
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                    // Only where the lens overhangs the pill: inside it the real glass shows, so
-                    // the refracted copy never doubles it. The labels above stay unrefracted.
-                    .mask { LensOverhang(lens: lensRect, pill: pillRect) }
-                    .transition(.opacity)
-                }
-
-                // The labels show through the clear lens unchanged, neighbours included, as in the
-                // reference. A drawn refraction (magnified labels inside the lens) was dropped: over
-                // the wide lifted lens it pushed the neighbouring labels out and left fragments.
+                // Labels are foreground ink, above both the track and the lens's optical rim.
                 ForEach(PoachCaptureTimer.allCases) { option in
                     label(option)
                         .position(x: CGFloat(layout.centre(of: option.index)), y: geometry.size.height / 2)
                 }
             }
+            .preference(key: CaptureTimerRefractionKey.self,
+                        value: CaptureTimerRefraction(centre: centre,
+                            amount: lifted && !reduceTransparency && contrast != .increased ? 1 : 0))
             .allowsHitTesting(false)
             .contentShape(Rectangle())
             .gesture(
@@ -1083,18 +1138,34 @@ private struct CaptureTimerLensPicker: View {
             .fixedSize()
     }
 
-    /// The lifted lens's edge, after the "prism warp" glass in the user's Figma reference
-    /// (Community-X): a 1 pt border of 65 % white. On the light pill a grey hairline outside it
-    /// keeps the lens visible.
-    @ViewBuilder private var lensRim: some View {
-        let dark = colorScheme == .dark
-        ZStack {
-            Capsule().strokeBorder(Color.white.opacity(0.65), lineWidth: 1)
-            if !dark {
-                Capsule().strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5)
-                    .padding(-0.5)
+    /// Native convex glass, masked after rendering so only its four-point perimeter is
+    /// visible. There is no scaled track copy or optical surface over the lens's centre.
+    private var lensEdgeGlass: some View {
+        Group {
+            if !reduceTransparency, contrast != .increased {
+                if #available(macOS 26.0, *) {
+                    Color.clear.glassEffect(.clear, in: Capsule())
+                } else {
+                    Capsule().fill(.ultraThinMaterial)
+                }
+            } else {
+                Color.clear
             }
         }
+        .mask { Capsule().strokeBorder(.white, lineWidth: 4).blur(radius: 1) }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var lensRim: some View {
+        let dark = colorScheme == .dark
+        return Capsule().strokeBorder(
+            LinearGradient(stops: [
+                .init(color: .white.opacity(dark ? 0.5 : 0.7), location: 0),
+                .init(color: .white.opacity(0.12), location: 0.4),
+                .init(color: .black.opacity(dark ? 0.35 : 0.15), location: 0.7),
+                .init(color: .white.opacity(0.25), location: 1)
+            ], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.75)
     }
 
     /// At rest the chosen option sits on an opaque pill with no outline: grey under the unified
@@ -1104,18 +1175,15 @@ private struct CaptureTimerLensPicker: View {
         return Color(white: colorScheme == .dark ? 0.4 : 0.5)
     }
 
-    /// Lifted, the "prism warp" glass of the reference: clear, with its thin border and the
-    /// two-layer drop shadow of the reference's buttons scaled to the lens (about 1/5). The prism's
-    /// refraction is drawn on the pill's edge under the lens, not on the labels. Both looks are
-    /// layered and faded, so they change with the lens's spring.
+    /// Preserve the resting thumb and both spring-driven sizes. Only the lifted material
+    /// changes: a clear centre, refracting edge and directional highlight, like the reference.
     private func lens(lifted: Bool) -> some View {
         ZStack {
             Capsule()
                 .fill(thumbColor)
                 .shadow(color: .black.opacity(0.12), radius: 1.5, x: 0, y: 0.5)
                 .opacity(lifted ? 0 : 1)
-            Capsule()
-                .fill(Color.white.opacity(0.001))
+            lensEdgeGlass
                 .overlay { lensRim }
                 .shadow(color: .black.opacity(0.12), radius: 1.4, x: 0, y: 1.6)
                 .shadow(color: .black.opacity(0.18), radius: 7, x: 0, y: 8)

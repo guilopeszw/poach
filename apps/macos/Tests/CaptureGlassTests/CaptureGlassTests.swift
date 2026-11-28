@@ -34,11 +34,11 @@ pass.colorAttachments[0].texture = output
 pass.colorAttachments[0].loadAction = .clear
 pass.colorAttachments[0].storeAction = .store
 pass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
-func render(pill: SIMD4<Float>, connection: Float) -> [UInt8] {
+func render(pill: SIMD4<Float>, connection: Float, refraction: SIMD4<Float> = .zero) -> [UInt8] {
     let command = queue.makeCommandBuffer()!
     let encoder = command.makeRenderCommandEncoder(descriptor: pass)!
     var uniforms = [SIMD4<Float>(256,192,0,0), SIMD4<Float>(128,72,80,48),
-                    pill, SIMD4<Float>(24,connection,1,1)]
+                    pill, SIMD4<Float>(24,connection,1,1),refraction]
     encoder.setRenderPipelineState(pipeline)
     uniforms.withUnsafeMutableBytes { encoder.setFragmentBytes($0.baseAddress!, length: $0.count, index: 0) }
     encoder.setFragmentTexture(input, index: 0)
@@ -68,8 +68,39 @@ for i in stride(from: 0, to: pixels.count, by: 4) where pixels[i+3] > 200 {
     if channels.max()! - channels.min()! > 25 { chromaticPixels += 1 }
 }
 precondition(chromaticPixels > 50, "Separate RGB ray samples must produce visible dispersion")
+// The timer lens compresses only the underlying track near its edges, without expanding it.
+let originalTrack = pixels
+precondition(alpha(128,137) > 200, "The uncompressed track must reach its original top edge")
+pixels = render(pill: SIMD4<Float>(128,152,44,16), connection: 0,
+                refraction: SIMD4<Float>(128,24,1,3.5))
+precondition(alpha(128,137) == 0 && alpha(128,166) == 0, "The track must narrow under the lens on both edges")
+precondition(alpha(128,152) == 255, "The track centre must remain filled")
+// The inset must be horizontal across the lens, rather than bowing back out at both ends.
+let topEdgeAlpha = Int(alpha(128,139))
+let bottomEdgeAlpha = Int(alpha(128,164))
+for x in 120...135 {
+    precondition(abs(Int(alpha(x,139)) - topEdgeAlpha) <= 1, "The refracted top edge must stay horizontal")
+    precondition(abs(Int(alpha(x,164)) - bottomEdgeAlpha) <= 1, "The refracted bottom edge must stay horizontal")
+}
+for y in 136..<169 {
+    for x in 156..<176 {
+        let index = (y * width + x) * 4
+        precondition(pixels[index..<(index+4)] == originalTrack[index..<(index+4)], "Pixels outside the lens must stay unchanged")
+    }
+}
+// Measure the rendered top contour over a straight part of a wider track. A short shoulder
+// produces a visible step here, even when the centre itself is perfectly horizontal.
+pixels = render(pill: SIMD4<Float>(128,152,80,16), connection: 0,
+                refraction: SIMD4<Float>(128,45,1,3.5))
+func topCutout(_ x: Int) -> Double {
+    (132..<147).reduce(0) { $0 + 1 - Double(alpha(x,$1)) / 255 }
+}
+for x in 84..<128 {
+    precondition(abs(topCutout(x+1) - topCutout(x)) < 0.4,
+                 "The refracted edge must ease into the horizontal inset without a step")
+}
 pixels = render(pill: SIMD4<Float>(128,126,16,16), connection: 30)
 precondition(alpha(150,123) > 200, "A liquid neck must join the nearby shapes")
 pixels = render(pill: SIMD4<Float>(128,126,16,16), connection: 0)
 precondition(alpha(150,123) == 0, "The neck must pinch off when the connection ends")
-print("Metal glass passed: connected and detached neck, clear centre, refracted perimeter, detached pill and \(chromaticPixels) chromatic pixels.")
+print("Metal glass passed: connected and detached neck, clear centre, refracted perimeter, local timer compression, detached pill and \(chromaticPixels) chromatic pixels.")
