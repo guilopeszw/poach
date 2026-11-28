@@ -16,7 +16,7 @@ const json = async (path, data) => {
   await mkdir(dirname(path),{recursive:true});
   await writeFile(path, JSON.stringify(data,null,2)+'\n');
 };
-const metadata = {name:'poach', version:'1.0.1', description:'Read the screen capture, keyframes, and timestamped notes you share from Poach.'};
+const metadata = {name:'poach', version:'1.1.0', description:'Read the screen capture, keyframes, and timestamped notes you share from Poach.'};
 try {
   await mkdir(plugin,{recursive:true});
   await build({
