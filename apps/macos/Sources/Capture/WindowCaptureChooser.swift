@@ -1,5 +1,5 @@
 import AppKit
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import SwiftUI
 
 @available(macOS 15.0, *)
@@ -59,7 +59,7 @@ final class WindowCaptureChooser: NSObject, NSWindowDelegate {
             let hosting = NSHostingController(rootView: WindowChooserView(
                 choices: choices,
                 columns: min(columns, choices.count),
-                actionTitle: screenshot ? "Take screenshot" : "Record",
+                screenshot: screenshot,
                 onSelect: { [weak chooser] in chooser?.finish($0) },
                 onCancel: { [weak chooser] in chooser?.finish(nil) }
             ).frame(width: width, height: height))
@@ -96,11 +96,12 @@ final class WindowCaptureChooser: NSObject, NSWindowDelegate {
 private struct WindowChooserView: View {
     let choices: [CaptureWindowChoice]
     let columns: Int
-    let actionTitle: String
+    let screenshot: Bool
     let onSelect: (CGWindowID) -> Void
     let onCancel: () -> Void
 
     @State private var selected: CGWindowID?
+    @State private var timerExpanded = false
     @FocusState private var gridFocused: Bool
 
     var body: some View {
@@ -109,7 +110,7 @@ private struct WindowChooserView: View {
                 Text("Choose an app window")
                     .font(.system(size: 21, weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
-                Text("Select a preview, then click \(actionTitle) or press Return.")
+                Text("Select a preview, then press Return to \(screenshot ? "take the screenshot" : "start recording").")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -142,18 +143,17 @@ private struct WindowChooserView: View {
                 }
             }
 
-            Divider()
-            HStack(spacing: 8) {
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button(actionTitle) {
-                    if let selected { onSelect(selected) }
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(selected == nil)
-            }
+            // The same pill as the area and display overlays: timer, capture, close.
+            CapturePill(
+                phase: .selecting(canStart: selected != nil),
+                screenshot: screenshot,
+                timerExpanded: $timerExpanded,
+                onPrimary: { if let selected { onSelect(selected) } },
+                onCancel: onCancel
+            )
+            // This pill sits inside a regular window, so its glass blurs the window's content.
+            .environment(\.capturePillBlending, .withinWindow)
+            .frame(maxWidth: .infinity)
         }
         .padding(20)
         .padding(.top, 12)

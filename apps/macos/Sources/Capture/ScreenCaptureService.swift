@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import SwiftUI
 
 enum PoachCaptureMode: String, CaseIterable, Identifiable {
@@ -89,45 +89,98 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     private var activeSelectedRegion: SelectedRegion?
     private var recordingAreaShadow: RecordingAreaShadowWindowController?
 
+    /// Lets the person choose what to capture, runs the optional countdown, then builds the filter.
+    /// The countdown overlay is gone before this returns, so it never appears in the capture.
     private func selectTarget(mode: PoachCaptureMode, screenshot: Bool) async throws
         -> (filter: SCContentFilter, selectedRegion: SelectedRegion?) {
-        let selectedRegion: SelectedRegion?
-        let filter: SCContentFilter
-        if mode == .selectedPortion {
-            let region = try await RegionSelectionWindowController.shared.selectRegion(screenshot: screenshot)
-            let content: SCShareableContent
-            do {
-                content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            } catch {
-                if Self.isPermissionDenied(error) { throw ScreenCaptureError.permissionDenied }
-                throw error
-            }
-            guard let display = content.displays.first(where: { $0.displayID == region.displayID }) else {
-                throw ScreenCaptureError.noDisplay
-            }
-            filter = try Self.displayFilter(for: display, in: content)
-            selectedRegion = region
-        } else {
-            if mode == .window {
-                filter = try await chooseWindowFilter(screenshot: screenshot)
-            } else {
-                let display: SCDisplay
-                let content: SCShareableContent
-                if #available(macOS 15.2, *) {
-                    let picked = try await chooseContent(for: mode).filter
-                    guard let selected = picked.includedDisplays.first else { throw ScreenCaptureError.noDisplay }
-                    display = selected
-                    content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                } else {
-                    // Older pickers do not expose their selected display for application filtering.
-                    content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                    display = try chooseDisplay(from: content.displays)
-                }
-                filter = try Self.displayFilter(for: display, in: content)
-            }
-            selectedRegion = nil
+        if mode == .window {
+            return (try await selectWindow(screenshot: screenshot), nil)
         }
-        return (filter, selectedRegion)
+        let target = try await CaptureSelectionWindowController.shared.select(mode: mode, screenshot: screenshot)
+        if let (outline, screen) = Self.outline(for: target) {
+            var isArea = false
+            if case .area = target { isArea = true }
+            try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen,
+                                                            screenshot: screenshot, attachPill: isArea)
+        }
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        } catch {
+            if Self.isPermissionDenied(error) { throw ScreenCaptureError.permissionDenied }
+            throw error
+        }
+        switch target {
+        case .area(let region):
+            return (try Self.displayFilter(displayID: region.displayID, content: content), region)
+        case .display(let displayID):
+            return (try Self.displayFilter(displayID: displayID, content: content), nil)
+        }
+    }
+
+    /// Window mode: the preview grid picks the window, then the optional countdown runs on it.
+    private func selectWindow(screenshot: Bool) async throws -> SCContentFilter {
+        let picked = try await chooseWindowFilter(screenshot: screenshot)
+        guard let (outline, screen) = Self.outline(forWindowFrame: picked.window?.frame) else { throw ScreenCaptureError.noDisplay }
+        try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen, screenshot: screenshot)
+        // The system-picker fallback has no window list to check against.
+        guard let chosen = picked.window, PoachCaptureTimer.current != .off else { return picked.filter }
+        // The countdown leaves time to close or minimize the window; such a window would record nothing.
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        } catch {
+            if Self.isPermissionDenied(error) { throw ScreenCaptureError.permissionDenied }
+            throw error
+        }
+        guard let window = content.windows.first(where: { $0.windowID == chosen.windowID && $0.isOnScreen }) else {
+            throw ScreenCaptureError.selectionFailed("That window is no longer available.")
+        }
+        return SCContentFilter(desktopIndependentWindow: window)
+    }
+
+    /// A display capture that leaves out Poach's own windows.
+    private static func displayFilter(displayID: CGDirectDisplayID, content: SCShareableContent) throws -> SCContentFilter {
+        guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
+            throw ScreenCaptureError.noDisplay
+        }
+        return try displayFilter(for: display, in: content)
+    }
+
+    /// The target's outline in AppKit global coordinates and the screen that shows its countdown.
+    private static func outline(for target: CaptureTarget) -> (CGRect, NSScreen)? {
+        switch target {
+        case .area(let region):
+            guard let screen = screen(for: region.displayID) else { return nil }
+            return (appKitRect(region), screen)
+        case .display(let displayID):
+            guard let screen = screen(for: displayID) else { return nil }
+            return (screen.frame, screen)
+        }
+    }
+
+    /// A window frame (global top-left coordinates) as a countdown outline. Without a frame,
+    /// the countdown is centred on the screen with the pointer.
+    private static func outline(forWindowFrame frame: CGRect?) -> (CGRect, NSScreen)? {
+        guard let primary = NSScreen.screens.first else { return nil }
+        guard let frame, frame.width > 0, frame.height > 0 else {
+            let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? primary
+            return (screen.frame, screen)
+        }
+        let rect = CaptureTargetGeometry.appKitRect(fromGlobalTopLeft: frame, primaryScreenHeight: primary.frame.height)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        return (rect, NSScreen.screens.first { $0.frame.contains(center) } ?? primary)
+    }
+
+    /// Converts a screen-local, top-left area to AppKit global coordinates.
+    private static func appKitRect(_ region: SelectedRegion) -> CGRect {
+        guard let screen = screen(for: region.displayID) else { return region.rect }
+        return CGRect(
+            x: screen.frame.minX + region.rect.minX,
+            y: screen.frame.maxY - region.rect.maxY,
+            width: region.rect.width,
+            height: region.rect.height
+        )
     }
 
     private static var poachWindowNumbers: [Int] {
@@ -176,9 +229,8 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         return (url, capturedAtEpochMs, sourceSize)
     }
 
-    func startRecording(mode: PoachCaptureMode, beforeCapture: @MainActor () async throws -> Void) async throws {
+    func startRecording(mode: PoachCaptureMode) async throws {
         let (filter, selectedRegion) = try await selectTarget(mode: mode, screenshot: false)
-        if selectedRegion == nil { try await beforeCapture() }
         activeSelectedRegion = selectedRegion
         let selectedRect: CGRect?
         selectedRect = selectedRegion?.rect
@@ -238,6 +290,13 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         }
     }
 
+    /// The recorded area in AppKit global coordinates and its screen; `nil` unless an area is recording.
+    var recordingArea: (CGRect, NSScreen)? {
+        guard let selectedRegion = activeSelectedRegion,
+              let screen = Self.screen(for: selectedRegion.displayID) else { return nil }
+        return (Self.appKitRect(selectedRegion), screen)
+    }
+
     func showRecordingAreaShadow() {
         guard let selectedRegion = activeSelectedRegion,
               let screen = Self.screen(for: selectedRegion.displayID) else { return }
@@ -269,15 +328,8 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     }
 
     private static func pointerCaptureBounds(filter: SCContentFilter, selectedRegion: SelectedRegion?) -> CGRect {
-        if let selectedRegion,
-           let screen = screen(for: selectedRegion.displayID) {
-            let selectedRect = selectedRegion.rect
-            return CGRect(
-                x: screen.frame.minX + selectedRect.minX,
-                y: screen.frame.maxY - selectedRect.maxY,
-                width: selectedRect.width,
-                height: selectedRect.height
-            )
+        if let selectedRegion, screen(for: selectedRegion.displayID) != nil {
+            return appKitRect(selectedRegion)
         }
         // includedWindows/includedDisplays require macOS 15.2, while the
         // capture service supports macOS 15.0. contentRect is available there
@@ -292,7 +344,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         }
     }
 
-    private func chooseWindowFilter(screenshot: Bool) async throws -> SCContentFilter {
+    private func chooseWindowFilter(screenshot: Bool) async throws -> (filter: SCContentFilter, window: SCWindow?) {
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
@@ -309,7 +361,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
                     throw ScreenCaptureError.selectionFailed("Choose a window from another app to capture.")
                 }
             }
-            return picked
+            return (picked, nil)
         }
 
         let poachWindowIDs = Set(Self.poachWindowNumbers)
@@ -326,26 +378,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
         }
 
         let selected = try await WindowCaptureChooser.choose(from: windows, screenshot: screenshot)
-        return SCContentFilter(desktopIndependentWindow: selected.window)
-    }
-
-    private func chooseDisplay(from displays: [SCDisplay]) throws -> SCDisplay {
-        guard let first = displays.first else { throw ScreenCaptureError.noDisplay }
-        guard displays.count > 1 else { return first }
-        let choices = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 240, height: 26))
-        for (index, display) in displays.enumerated() {
-            let screen = NSScreen.screens.first {
-                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID
-            }
-            choices.addItem(withTitle: screen?.localizedName ?? "Display \(index + 1)")
-        }
-        let alert = NSAlert()
-        alert.messageText = "Choose a display"
-        alert.accessoryView = choices
-        alert.addButton(withTitle: "Continue")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { throw ScreenCaptureError.selectionCancelled }
-        return displays[choices.indexOfSelectedItem]
+        return (SCContentFilter(desktopIndependentWindow: selected.window), selected.window)
     }
 
     private func chooseContent(for mode: PoachCaptureMode) async throws -> ContentFilterBox {
@@ -440,105 +473,16 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     }
 }
 
+
+/// Carries a picker filter across the observer's nonisolated callbacks.
 private struct ContentFilterBox: @unchecked Sendable {
     let filter: SCContentFilter
     init(_ filter: SCContentFilter) { self.filter = filter }
 }
 
-private struct SelectedRegion {
-    let displayID: CGDirectDisplayID
-    let rect: CGRect
-}
-
 private struct ScreenCaptureServiceError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
-}
-
-@MainActor
-private final class RegionSelectionWindowController {
-    static let shared = RegionSelectionWindowController()
-    private var panels: [NSPanel] = []
-    private var continuation: CheckedContinuation<SelectedRegion, Error>?
-
-    func selectRegion(screenshot: Bool) async throws -> SelectedRegion {
-        try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            NSApp.unhide(nil)
-            NSApp.windows.filter { $0.title == "Poach" }.forEach { $0.orderOut(nil) }
-            for screen in NSScreen.screens {
-                guard let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else { continue }
-                let panel = RegionSelectionPanel(
-                    contentRect: NSRect(origin: .zero, size: screen.frame.size),
-                    styleMask: [.borderless, .nonactivatingPanel],
-                    backing: .buffered,
-                    defer: false
-                )
-                panel.level = .screenSaver
-                panel.title = "Poach — Select an area"
-                panel.hidesOnDeactivate = false
-                panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-                panel.isOpaque = false
-                panel.backgroundColor = .clear
-                panel.hasShadow = false
-                panel.becomesKeyOnlyIfNeeded = false
-                panel.isMovable = false
-                panel.contentView = TransparentHostingView(rootView: RegionSelectionView(
-                    screenshot: screenshot,
-                    onSelect: { [weak self] rect in self?.finish(.success(SelectedRegion(displayID: displayID, rect: rect))) },
-                    onCancel: { [weak self] in self?.finish(.failure(ScreenCaptureError.selectionCancelled)) }
-                ))
-                panel.backgroundColor = .clear
-                panel.isOpaque = false
-                panel.setFrame(screen.frame, display: true)
-                self.panels.append(panel)
-                panel.orderFrontRegardless()
-                if screen.frame.contains(NSEvent.mouseLocation) {
-                    panel.makeKeyAndOrderFront(nil)
-                }
-            }
-            guard !panels.isEmpty else {
-                self.continuation = nil
-                continuation.resume(throwing: ScreenCaptureError.noDisplay)
-                return
-            }
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows
-                .filter { $0.title == "Poach" }
-                .forEach { $0.orderOut(nil) }
-        }
-    }
-
-    private func finish(_ result: Result<SelectedRegion, Error>) {
-        panels.forEach { $0.orderOut(nil) }
-        panels.removeAll()
-        if case .failure = result {
-            NSApp.unhide(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows
-                .first(where: { $0.title == "Poach" })?
-                .makeKeyAndOrderFront(nil)
-        }
-        continuation?.resume(with: result)
-        continuation = nil
-    }
-}
-
-private final class RegionSelectionPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-}
-
-@MainActor
-private final class TransparentHostingView<Content: View>: NSHostingView<Content> {
-    override var isOpaque: Bool { false }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        window?.backgroundColor = .clear
-        window?.isOpaque = false
-        layer?.backgroundColor = NSColor.clear.cgColor
-        layer?.isOpaque = false
-    }
 }
 
 @MainActor
@@ -600,8 +544,10 @@ private struct RecordingAreaShadowView: View {
     var body: some View {
         GeometryReader { geometry in
             Canvas { context, size in
+                // The pill's corner radius, like the selection it came from.
+                let rounded = Path(roundedRect: area, cornerRadius: CapturePillLayout.areaCornerRadius(for: area), style: .continuous)
                 var outsideArea = Path(CGRect(origin: .zero, size: size))
-                outsideArea.addRect(area)
+                outsideArea.addPath(rounded)
                 context.fill(
                     outsideArea,
                     with: .color(.black.opacity(0.24)),
@@ -610,150 +556,18 @@ private struct RecordingAreaShadowView: View {
 
                 context.drawLayer { edge in
                     edge.addFilter(.shadow(color: .black.opacity(0.42), radius: 16, x: 0, y: 3))
-                    edge.stroke(Path(area), with: .color(.white.opacity(0.22)), lineWidth: 1)
+                    edge.stroke(rounded, with: .color(.white.opacity(0.22)), lineWidth: 1)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .overlay {
+                if #available(macOS 26.0, *) {
+                    CaptureAreaGlass(area: area)
+                }
+            }
             .allowsHitTesting(false)
         }
         .background(.clear)
         .accessibilityHidden(true)
-    }
-}
-
-private struct RegionSelectionView: View {
-    let screenshot: Bool
-    let onSelect: (CGRect) -> Void
-    let onCancel: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var origin: CGPoint?
-    @State private var current: CGPoint?
-    @State private var countdownValue: Int?
-    @State private var countdownTask: Task<Void, Never>?
-
-    private var selection: CGRect? {
-        guard let origin, let current else { return nil }
-        return CGRect(x: min(origin.x, current.x), y: min(origin.y, current.y),
-                      width: abs(current.x - origin.x), height: abs(current.y - origin.y))
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .bottom) {
-                Canvas { context, size in
-                    var mask = Path(CGRect(origin: .zero, size: size))
-                    if let selection, selection.width > 3, selection.height > 3 {
-                        mask.addRect(selection)
-                    }
-                    context.fill(mask, with: .color(.black.opacity(0.48)), style: FillStyle(eoFill: true))
-                    if let selection {
-                        context.stroke(Path(selection), with: .color(.white), lineWidth: 2)
-                        context.stroke(Path(selection.insetBy(dx: 3, dy: 3)), with: .color(.white.opacity(0.5)), lineWidth: 1)
-                    }
-                }
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        guard countdownTask == nil else { return }
-                        origin = clamped(value.startLocation, to: geometry.size)
-                        current = clamped(value.location, to: geometry.size)
-                    })
-                    .allowsHitTesting(countdownValue == nil)
-
-                if let countdownValue {
-                    PoachCountdown(count: countdownValue)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .accessibilityLabel("Recording starts in \(countdownValue) seconds")
-                        .allowsHitTesting(false)
-                }
-
-                VStack(spacing: 10) {
-                    Text(countdownValue != nil ? "Get ready — recording starts shortly" : selection == nil ? "Drag to select an area" : screenshot ? "Ready to take a screenshot" : "Ready to record")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.primary)
-
-                    HStack(spacing: 10) {
-                        Button {
-                            countdownTask?.cancel()
-                            onCancel()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 14, weight: .semibold))
-                                .frame(width: 44, height: 32)
-                                .background(Color(white: 0.93), in: RoundedRectangle(cornerRadius: 9))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .keyboardShortcut(.cancelAction)
-                        .accessibilityLabel("Cancel area selection")
-                        .help("Cancel")
-
-                        Button {
-                            confirmSelection()
-                        } label: {
-                            Image(systemName: screenshot ? "camera" : "circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 32)
-                                .background(screenshot ? PoachPalette.ink : Color.red, in: RoundedRectangle(cornerRadius: 9))
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled((selection?.width ?? 0) < 32 || (selection?.height ?? 0) < 32 || countdownValue != nil)
-                        .accessibilityLabel(screenshot ? "Take screenshot" : "Start recording")
-                        .help(screenshot ? "Take screenshot (Return)" : "Start the three-second countdown (Return)")
-                        .keyboardShortcut(.defaultAction)
-                    }
-                }
-                .frame(width: 262, height: 116)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(.black.opacity(0.15), lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-                .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
-                .padding(.bottom, 26)
-                .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity)
-                .allowsHitTesting(true)
-            }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-        }
-        .background(.clear)
-        .preferredColorScheme(.light)
-        .onExitCommand {
-            countdownTask?.cancel()
-            onCancel()
-        }
-        .onDisappear { countdownTask?.cancel() }
-    }
-
-    private func clamped(_ point: CGPoint, to size: CGSize) -> CGPoint {
-        CGPoint(x: min(max(point.x, 0), size.width), y: min(max(point.y, 0), size.height))
-    }
-
-    private func confirmSelection() {
-        guard countdownTask == nil, let selectedArea = selection?.integral,
-              selectedArea.width >= 32, selectedArea.height >= 32 else { return }
-        if screenshot {
-            onSelect(selectedArea)
-            return
-        }
-        countdownTask = Task { @MainActor in
-            for count in stride(from: 3, through: 1, by: -1) {
-                guard !Task.isCancelled else { return }
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { countdownValue = count }
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
-            }
-            guard !Task.isCancelled else { return }
-            countdownValue = nil
-            countdownTask = nil
-            onSelect(selectedArea)
-        }
     }
 }
