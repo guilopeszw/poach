@@ -26,6 +26,7 @@ final class CaptureGlassBackdrop {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 guard !Task.isCancelled, let display = content.displays.first(where: { $0.displayID == displayID }) else { return }
                 let ownApps = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
+                guard !ownApps.isEmpty else { return }
                 let filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
                 let configuration = SCStreamConfiguration()
                 let screen = NSScreen.screens.first {

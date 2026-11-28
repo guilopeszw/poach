@@ -40,4 +40,3 @@ final class CaptureGlassFrames: @unchecked Sendable {
     }
     #endif
 }
-

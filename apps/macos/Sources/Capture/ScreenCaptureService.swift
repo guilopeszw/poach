@@ -121,7 +121,7 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
     /// Window mode: the preview grid picks the window, then the optional countdown runs on it.
     private func selectWindow(screenshot: Bool) async throws -> SCContentFilter {
         let picked = try await chooseWindowFilter(screenshot: screenshot)
-        let (outline, screen) = Self.outline(forWindowFrame: picked.window?.frame)
+        guard let (outline, screen) = Self.outline(forWindowFrame: picked.window?.frame) else { throw ScreenCaptureError.noDisplay }
         try await CaptureCountdownController.shared.run(seconds: PoachCaptureTimer.current.seconds, outline: outline, on: screen, screenshot: screenshot)
         // The system-picker fallback has no window list to check against.
         guard let chosen = picked.window, PoachCaptureTimer.current != .off else { return picked.filter }
@@ -161,8 +161,8 @@ final class ScreenCaptureService: NSObject, SCRecordingOutputDelegate, SCContent
 
     /// A window frame (global top-left coordinates) as a countdown outline. Without a frame,
     /// the countdown is centred on the screen with the pointer.
-    private static func outline(forWindowFrame frame: CGRect?) -> (CGRect, NSScreen) {
-        let primary = NSScreen.screens.first ?? NSScreen.main!
+    private static func outline(forWindowFrame frame: CGRect?) -> (CGRect, NSScreen)? {
+        guard let primary = NSScreen.screens.first else { return nil }
         guard let frame, frame.width > 0, frame.height > 0 else {
             let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? primary
             return (screen.frame, screen)
